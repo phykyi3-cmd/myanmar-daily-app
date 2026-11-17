@@ -84,17 +84,37 @@ jobs:
         with:
           gradle-version: '9.5.0'
 
-      - name: Install Flutter packages & ensure Gradle wrapper
+      - name: Install Flutter packages & configure Maven mirror
         run: |
           flutter pub get
+          mkdir -p ~/.gradle/init.d
+          cat << 'EOF' > ~/.gradle/init.d/mirror.gradle
+          def rewriteRepo = { repo ->
+            if (repo instanceof MavenArtifactRepository) {
+              def url = repo.url.toString()
+              if (url.startsWith('https://repo.maven.apache.org/maven2')) {
+                repo.url = uri('https://maven-central.storage-download.googleapis.com/maven2/')
+              }
+            }
+          }
+          beforeSettings { settings ->
+            settings.pluginManagement.repositories.all rewriteRepo
+            settings.dependencyResolutionManagement.repositories.all rewriteRepo
+          }
+          allprojects {
+            repositories.all rewriteRepo
+            buildscript.repositories.all rewriteRepo
+          }
+          EOF
+          echo "flutter.sdk=$FLUTTER_ROOT" > android/local.properties
           if [ ! -f android/gradlew ]; then
-            (cd android && gradle wrapper --gradle-version 9.5.0)
+            (cd android && gradle wrapper --gradle-version 9.5.0) || (sleep 15 && cd android && gradle wrapper --gradle-version 9.5.0)
           fi
           chmod +x android/gradlew
 
       - name: Build Android Release APK
         run: |
-          flutter build apk --release --no-tree-shake-icons
+          flutter build apk --release --no-tree-shake-icons || (sleep 10 && flutter build apk --release --no-tree-shake-icons)
           cp build/app/outputs/flutter-apk/app-release.apk build/myanmar-daily-app-universal.apk
 
       - name: Upload APK Workflow Artifact
