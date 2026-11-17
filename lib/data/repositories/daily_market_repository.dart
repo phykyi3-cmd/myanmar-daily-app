@@ -1,27 +1,61 @@
 import '../../domain/models/commodity_price.dart';
 import '../../domain/models/daily_purchase_record.dart';
 import '../../domain/models/recipe.dart';
+import '../../domain/models/regional_market.dart';
 import '../../domain/models/shopping_item.dart';
 import '../../ui/core/utils/formatters.dart';
 import '../services/asset_data_service.dart';
+import '../services/ip_geolocation_service.dart';
 import '../services/local_db_service.dart';
 import '../services/market_price_service.dart';
+import '../services/preferences_service.dart';
 
-/// Repository managing bundled Myanmar recipes, live online commodity prices, shopping checklists, and date-based purchase records.
+/// Repository managing bundled Myanmar recipes, live online commodity prices, IP country detection, shopping checklists, and purchase records.
 class DailyMarketRepository {
   DailyMarketRepository({
     required LocalDbService dbService,
     required AssetDataService assetDataService,
     required MarketPriceService marketPriceService,
+    IpGeolocationService? ipGeolocationService,
+    PreferencesService? preferencesService,
   })  : _dbService = dbService,
         _assetDataService = assetDataService,
-        _marketPriceService = marketPriceService;
+        _marketPriceService = marketPriceService,
+        _ipGeolocationService = ipGeolocationService ?? IpGeolocationService(),
+        _preferencesService = preferencesService ?? PreferencesService();
 
   final LocalDbService _dbService;
   final AssetDataService _assetDataService;
   final MarketPriceService _marketPriceService;
+  final IpGeolocationService _ipGeolocationService;
+  final PreferencesService _preferencesService;
 
   Future<List<Recipe>> getRecipes() => _assetDataService.loadRecipes();
+
+  Future<IpLocationResult> detectIpLocation() =>
+      _ipGeolocationService.detectCountry();
+
+  Future<String> loadMarketCountryMode() =>
+      _preferencesService.loadMarketCountryMode();
+
+  Future<void> saveMarketCountryMode(String mode) =>
+      _preferencesService.saveMarketCountryMode(mode);
+
+  Future<Map<String, double>> loadRegionalOverrides(
+    SupportedMarketCountry country,
+  ) =>
+      _preferencesService.loadRegionalPriceOverrides(country);
+
+  Future<void> saveRegionalOverride({
+    required SupportedMarketCountry country,
+    required String commodityId,
+    required double localUnitPrice,
+  }) =>
+      _preferencesService.saveRegionalPriceOverride(
+        country: country,
+        commodityId: commodityId,
+        localUnitPrice: localUnitPrice,
+      );
 
   Future<MarketPriceSnapshot> syncLiveMarketPrices({int? customUsdMarketMmk}) =>
       _marketPriceService.syncLiveMarketPrices(
@@ -59,15 +93,46 @@ class DailyMarketRepository {
 
   Future<void> addIngredientsFromRecipe(
     Recipe recipe,
-    Map<String, CommodityPrice> commodities,
-  ) async {
+    Map<String, CommodityPrice> commodities, {
+    SupportedMarketCountry country = SupportedMarketCountry.mm,
+    MarketPriceSnapshot? snapshot,
+    Map<String, double> regionalOverrides = const {},
+  }) async {
     final now = DateTime.now();
+    final activeSnapshot = snapshot;
+    final unitPrices = (country != SupportedMarketCountry.mm &&
+            activeSnapshot != null)
+        ? RegionalMarketCatalog.resolveUnitPrices(
+            country: country,
+            snapshot: activeSnapshot,
+            regionalOverrides: regionalOverrides,
+          )
+        : null;
+
     for (final ingredient in recipe.ingredients) {
+      final int estimatedMmk;
+      if (country == SupportedMarketCountry.mm ||
+          activeSnapshot == null ||
+          unitPrices == null) {
+        estimatedMmk = ingredient.estimatedCostMmk(commodities);
+      } else {
+        final localCost = RegionalMarketCatalog.ingredientCostLocal(
+          ingredient: ingredient,
+          country: country,
+          unitPrices: unitPrices,
+          snapshot: activeSnapshot,
+        );
+        estimatedMmk = RegionalMarketCatalog.convertCountryToMmk(
+          localCost,
+          country,
+          activeSnapshot,
+        );
+      }
       await addShoppingItem(
         ShoppingItem(
           name: ingredient.name,
           quantity: ingredient.amount,
-          estimatedCostMmk: ingredient.estimatedCostMmk(commodities),
+          estimatedCostMmk: estimatedMmk,
           recipeName: recipe.name,
           createdAt: now,
         ),

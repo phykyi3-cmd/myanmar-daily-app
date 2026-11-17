@@ -4,6 +4,7 @@ import 'package:myanmar_daily_app/data/repositories/daily_market_repository.dart
 import 'package:myanmar_daily_app/domain/models/commodity_price.dart';
 import 'package:myanmar_daily_app/domain/models/daily_purchase_record.dart';
 import 'package:myanmar_daily_app/domain/models/recipe.dart';
+import 'package:myanmar_daily_app/domain/models/regional_market.dart';
 import 'package:myanmar_daily_app/domain/models/shopping_item.dart';
 
 /// Sub-tabs inside the Daily Life & Market screen (`ဟင်းချက်အစီအစဉ်` first, then `ဈေးဝယ်စာရင်း`).
@@ -24,6 +25,27 @@ class DailyMarketViewModel extends ChangeNotifier {
 
   bool _isSyncingOnline = false;
   bool get isSyncingOnline => _isSyncingOnline;
+
+  bool _isDetectingLocation = false;
+  bool get isDetectingLocation => _isDetectingLocation;
+
+  String _countryMode = 'auto';
+  String get countryMode => _countryMode;
+  bool get isAutoIpMode => _countryMode == 'auto';
+
+  SupportedMarketCountry _activeCountry = SupportedMarketCountry.mm;
+  SupportedMarketCountry get activeCountry => _activeCountry;
+
+  IpLocationResult? _ipLocation;
+  IpLocationResult? get ipLocation => _ipLocation;
+
+  Map<String, double> _regionalOverrides = const {};
+  Map<String, double> get regionalUnitPrices =>
+      RegionalMarketCatalog.resolveUnitPrices(
+        country: _activeCountry,
+        snapshot: _marketSnapshot,
+        regionalOverrides: _regionalOverrides,
+      );
 
   List<ShoppingItem> _items = const [];
   List<ShoppingItem> get items => _items;
@@ -105,7 +127,12 @@ class DailyMarketViewModel extends ChangeNotifier {
       final matchesCategory = _selectedCategory == 'အားလုံး'
           ? true
           : _selectedCategory == 'ချွေတာရေး'
-              ? r.totalEstimatedCostMmk(commodities) <= 5500
+              ? RegionalMarketCatalog.convertCountryToMmk(
+                    recipeCostLocal(r),
+                    _activeCountry,
+                    _marketSnapshot,
+                  ) <=
+                  5500
               : r.category == _selectedCategory;
       if (!matchesCategory) return false;
       return _matchesSearch(r);
@@ -122,7 +149,12 @@ class DailyMarketViewModel extends ChangeNotifier {
     return _recipes.where((r) {
       if (!r.isEthnicDish) return false;
       if (_selectedCategory == 'ချွေတာရေး' &&
-          r.totalEstimatedCostMmk(commodities) > 5500) {
+          RegionalMarketCatalog.convertCountryToMmk(
+                recipeCostLocal(r),
+                _activeCountry,
+                _marketSnapshot,
+              ) >
+              5500) {
         return false;
       }
       if (_selectedEthnicGroup != 'အားလုံး' &&
@@ -169,6 +201,52 @@ class DailyMarketViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  double recipeCostLocal(Recipe recipe) => RegionalMarketCatalog.recipeTotalLocal(
+        recipe: recipe,
+        country: _activeCountry,
+        unitPrices: regionalUnitPrices,
+        snapshot: _marketSnapshot,
+      );
+
+  double ingredientCostLocal(RecipeIngredient ingredient) =>
+      RegionalMarketCatalog.ingredientCostLocal(
+        ingredient: ingredient,
+        country: _activeCountry,
+        unitPrices: regionalUnitPrices,
+        snapshot: _marketSnapshot,
+      );
+
+  String ingredientUnitSummaryLocal(RecipeIngredient ingredient) =>
+      RegionalMarketCatalog.ingredientUnitSummary(
+        ingredient: ingredient,
+        country: _activeCountry,
+        snapshot: _marketSnapshot,
+        unitPrices: regionalUnitPrices,
+      );
+
+  String formatLocalAmount(double amount) =>
+      _activeCountry.formatAmount(amount);
+
+  String formatCostFromMmk(int mmk) => RegionalMarketCatalog.formatFromMmk(
+        mmk,
+        _activeCountry,
+        _marketSnapshot,
+      );
+
+  int convertLocalToMmk(double localAmount) =>
+      RegionalMarketCatalog.convertCountryToMmk(
+        localAmount,
+        _activeCountry,
+        _marketSnapshot,
+      );
+
+  double convertMmkToLocal(int mmk) =>
+      RegionalMarketCatalog.convertMmkToCountry(
+        mmk,
+        _activeCountry,
+        _marketSnapshot,
+      );
+
   Future<void> loadAll() async {
     _isLoading = true;
     notifyListeners();
@@ -176,9 +254,50 @@ class DailyMarketViewModel extends ChangeNotifier {
       _items = await _repository.getShoppingItems();
       _purchaseRecords = await _repository.getPurchaseRecords();
       _recipes = await _repository.getRecipes();
+      _countryMode = await _repository.loadMarketCountryMode();
       _marketSnapshot = await _repository.syncLiveMarketPrices();
+
+      final manualCountry = SupportedMarketCountry.fromIsoCode(_countryMode);
+      if (manualCountry != null) {
+        _activeCountry = manualCountry;
+      } else {
+        _ipLocation = await _repository.detectIpLocation();
+        _activeCountry = _ipLocation!.effectiveCountry;
+      }
+      _regionalOverrides =
+          await _repository.loadRegionalOverrides(_activeCountry);
     } finally {
       _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> setCountrySelection(String modeOrIso) async {
+    await _repository.saveMarketCountryMode(modeOrIso);
+    _countryMode = await _repository.loadMarketCountryMode();
+    if (_countryMode == 'auto') {
+      await refreshIpLocation();
+      return;
+    }
+    _activeCountry = SupportedMarketCountry.fromIsoCode(_countryMode) ??
+        SupportedMarketCountry.mm;
+    _regionalOverrides =
+        await _repository.loadRegionalOverrides(_activeCountry);
+    notifyListeners();
+  }
+
+  Future<void> refreshIpLocation() async {
+    _isDetectingLocation = true;
+    notifyListeners();
+    try {
+      await _repository.saveMarketCountryMode('auto');
+      _countryMode = 'auto';
+      _ipLocation = await _repository.detectIpLocation();
+      _activeCountry = _ipLocation!.effectiveCountry;
+      _regionalOverrides =
+          await _repository.loadRegionalOverrides(_activeCountry);
+    } finally {
+      _isDetectingLocation = false;
       notifyListeners();
     }
   }
@@ -188,6 +307,12 @@ class DailyMarketViewModel extends ChangeNotifier {
     notifyListeners();
     try {
       _marketSnapshot = await _repository.syncLiveMarketPrices();
+      if (_countryMode == 'auto') {
+        _ipLocation = await _repository.detectIpLocation();
+        _activeCountry = _ipLocation!.effectiveCountry;
+        _regionalOverrides =
+            await _repository.loadRegionalOverrides(_activeCountry);
+      }
     } finally {
       _isSyncingOnline = false;
       notifyListeners();
@@ -211,6 +336,24 @@ class DailyMarketViewModel extends ChangeNotifier {
       commodityId: commodityId,
       newUnitPriceMmk: newPriceMmk,
     );
+    notifyListeners();
+  }
+
+  Future<void> updateActiveRegionalCommodityPrice(
+    String commodityId,
+    double newLocalUnitPrice,
+  ) async {
+    if (_activeCountry == SupportedMarketCountry.mm) {
+      await updateCommodityPrice(commodityId, newLocalUnitPrice.round());
+      return;
+    }
+    await _repository.saveRegionalOverride(
+      country: _activeCountry,
+      commodityId: commodityId,
+      localUnitPrice: newLocalUnitPrice,
+    );
+    _regionalOverrides =
+        await _repository.loadRegionalOverrides(_activeCountry);
     notifyListeners();
   }
 
@@ -255,7 +398,13 @@ class DailyMarketViewModel extends ChangeNotifier {
   }
 
   Future<void> addRecipeIngredientsToChecklist(Recipe recipe) async {
-    await _repository.addIngredientsFromRecipe(recipe, commodities);
+    await _repository.addIngredientsFromRecipe(
+      recipe,
+      commodities,
+      country: _activeCountry,
+      snapshot: _marketSnapshot,
+      regionalOverrides: _regionalOverrides,
+    );
     _items = await _repository.getShoppingItems();
     notifyListeners();
   }

@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:myanmar_daily_app/domain/models/commodity_price.dart';
 import 'package:myanmar_daily_app/domain/models/daily_purchase_record.dart';
 import 'package:myanmar_daily_app/domain/models/recipe.dart';
+import 'package:myanmar_daily_app/domain/models/regional_market.dart';
 import 'package:myanmar_daily_app/domain/models/shopping_item.dart';
 import 'package:myanmar_daily_app/ui/core/theme/app_theme.dart';
 import 'package:myanmar_daily_app/ui/core/utils/formatters.dart';
@@ -187,9 +188,10 @@ class _DailyMarketScreenState extends State<DailyMarketScreen> {
               const SizedBox(height: 10),
               TextField(
                 controller: costCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'ခန့်မှန်းတန်ဖိုး (ကျပ်)',
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText:
+                      'ခန့်မှန်းတန်ဖိုး (${widget.viewModel.activeCountry.currencyLabelMm})',
                 ),
               ),
               const SizedBox(height: 10),
@@ -211,11 +213,14 @@ class _DailyMarketScreenState extends State<DailyMarketScreen> {
             onPressed: () async {
               final name = nameCtrl.text.trim();
               if (name.isEmpty) return;
+              final parsedLocal =
+                  double.tryParse(normalizeAsciiDigits(costCtrl.text)) ?? 0.0;
               await widget.viewModel.addItem(
                 ShoppingItem(
                   name: name,
                   quantity: qtyCtrl.text.trim(),
-                  estimatedCostMmk: int.tryParse(costCtrl.text.trim()) ?? 0,
+                  estimatedCostMmk:
+                      widget.viewModel.convertLocalToMmk(parsedLocal),
                   recipeName: dishCtrl.text.trim(),
                   createdAt: DateTime.now(),
                 ),
@@ -266,65 +271,84 @@ class _DailyMarketScreenState extends State<DailyMarketScreen> {
           listenable: vm,
           builder: (context, _) {
             final commodities = vm.commodities.values.toList();
+            final country = vm.activeCountry;
+            final unitPrices = vm.regionalUnitPrices;
+            final mmkPerUnit = RegionalMarketCatalog.mmkPerCurrencyUnit(
+              country,
+              vm.marketSnapshot,
+            );
             return ListView(
               controller: scrollController,
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
               children: [
                 Text(
-                  'ယနေ့ ကုန်ဈေးနှုန်းနှင့် မြန်မာငွေလဲနှုန်း စံနှုန်းများ',
+                  '${country.flag} ${country.nameMm} ကုန်ဈေးနှုန်းနှင့် ငွေကြေးစံနှုန်း (${country.currencyCode})',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
                       ),
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'ဒေါ်လာ/ဘတ် ငွေလဲနှုန်း အတက်အကျ သို့မဟုတ် ၁ ပိဿာချင်းစီရဲ့ ပေါက်ဈေးကို ပြင်လိုက်တာနဲ့ ဟင်းလျာ (${vm.recipes.length}) မျိုးလုံးရဲ့ ပါဝင်ပစ္စည်း ကျသင့်ငွေတွေ အလိုအလျောက် ပြောင်းလဲတွက်ချက်ပေးပါတယ်။',
+                  country == SupportedMarketCountry.mm
+                      ? 'ဒေါ်လာ/ဘတ် ငွေလဲနှုန်း အတက်အကျ သို့မဟုတ် ၁ ပိဿာချင်းစီရဲ့ ပေါက်ဈေးကို ပြင်လိုက်တာနဲ့ ဟင်းလျာ (${vm.recipes.length}) မျိုးလုံးရဲ့ ကျသင့်ငွေတွေ အလိုအလျောက် ပြောင်းလဲတွက်ချက်ပေးပါတယ်။'
+                      : '${country.unitBasisNoteMm} • 1 ${country.currencyCode} ≈ ${formatMmk(mmkPerUnit.round())} ဖြင့် ဟင်းလျာ (${vm.recipes.length}) မျိုးလုံးကို ${country.currencyLabelMm} ဖြင့် တွက်ချက်ပြသထားပါသည်။',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: usdCtrl,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: 'လက်ရှိ 1 USD ပြင်ပပေါက်ဈေး (ကျပ်)',
+                if (country == SupportedMarketCountry.mm) ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: usdCtrl,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'လက်ရှိ 1 USD ပြင်ပပေါက်ဈေး (ကျပ်)',
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton.icon(
-                      onPressed: () async {
-                        final val = int.tryParse(usdCtrl.text.trim());
-                        if (val != null && val > 500) {
-                          await vm.updateUsdMarketRate(val);
-                        }
-                      },
-                      icon: const Icon(Icons.sync, size: 18),
-                      label: const Text('နှုန်းချိန်မည်'),
-                    ),
-                  ],
-                ),
+                      const SizedBox(width: 8),
+                      FilledButton.icon(
+                        onPressed: () async {
+                          final val = int.tryParse(
+                            normalizeAsciiDigits(usdCtrl.text),
+                          );
+                          if (val != null && val > 500) {
+                            await vm.updateUsdMarketRate(val);
+                          }
+                        },
+                        icon: const Icon(Icons.sync, size: 18),
+                        label: const Text('နှုန်းချိန်မည်'),
+                      ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 16),
                 ...commodities.map(
-                  (c) => Card(
-                    child: ListTile(
-                      title: Text(
-                        c.nameMm,
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                      subtitle: Text('${c.unitLabelMm} ပေါက်ဈေး'),
-                      trailing: TextButton.icon(
-                        onPressed: () => _editSingleCommodityDialog(c),
-                        icon: const Icon(Icons.edit_outlined, size: 16),
-                        label: Text(
-                          formatMmk(c.currentPriceMmk),
-                          style: const TextStyle(fontWeight: FontWeight.w800),
+                  (c) {
+                    final localPrice =
+                        unitPrices[c.id] ?? c.currentPriceMmk.toDouble();
+                    final unitLabel = country == SupportedMarketCountry.mm
+                        ? '${c.unitLabelMm} ပေါက်ဈေး'
+                        : '${c.unitLabelMm} (သို့မဟုတ်) ဒေသစံနှုန်း';
+                    return Card(
+                      child: ListTile(
+                        title: Text(
+                          c.nameMm,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        subtitle: Text(unitLabel),
+                        trailing: TextButton.icon(
+                          onPressed: () => _editSingleCommodityDialog(c),
+                          icon: const Icon(Icons.edit_outlined, size: 16),
+                          label: Text(
+                            vm.formatLocalAmount(localPrice),
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
+                    );
+                  },
                 ),
               ],
             );
@@ -336,18 +360,26 @@ class _DailyMarketScreenState extends State<DailyMarketScreen> {
   }
 
   Future<void> _editSingleCommodityDialog(CommodityPrice commodity) async {
+    final vm = widget.viewModel;
+    final country = vm.activeCountry;
+    final currentLocal =
+        vm.regionalUnitPrices[commodity.id] ?? commodity.currentPriceMmk.toDouble();
     final ctrl = TextEditingController(
-      text: commodity.currentPriceMmk.toString(),
+      text: country.decimalPlaces > 0
+          ? currentLocal.toStringAsFixed(country.decimalPlaces)
+          : currentLocal.round().toString(),
     );
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('${commodity.nameMm} (${commodity.unitLabelMm})'),
+        title: Text('${country.flag} ${commodity.nameMm} (${commodity.unitLabelMm})'),
         content: TextField(
           controller: ctrl,
-          keyboardType: TextInputType.number,
+          keyboardType: TextInputType.numberWithOptions(
+            decimal: country.decimalPlaces > 0,
+          ),
           decoration: InputDecoration(
-            labelText: '${commodity.unitLabelMm} ပေါက်ဈေး (ကျပ်)',
+            labelText: '${country.nameMm} ပေါက်ဈေး (${country.currencyLabelMm})',
           ),
         ),
         actions: [
@@ -357,9 +389,9 @@ class _DailyMarketScreenState extends State<DailyMarketScreen> {
           ),
           FilledButton(
             onPressed: () async {
-              final next = int.tryParse(ctrl.text.trim());
+              final next = double.tryParse(normalizeAsciiDigits(ctrl.text));
               if (next != null && next > 0) {
-                await widget.viewModel.updateCommodityPrice(commodity.id, next);
+                await vm.updateActiveRegionalCommodityPrice(commodity.id, next);
               }
               if (context.mounted) Navigator.of(context).pop();
             },
@@ -532,7 +564,7 @@ class _ShoppingSection extends StatelessWidget {
       context,
       title: 'ဈေးဝယ်မှတ်တမ်း ဖျက်မည်လား?',
       message:
-          '“$dateLabel” နေ့စွဲ မှတ်တမ်း (ပစ္စည်း ${record.itemCount} မျိုး • စုစုပေါင်း ${formatMmk(record.totalCostMmk)}) ကို အပြီးဖျက်မည်လား?\n\nဖျက်ပြီးပါက ပြန်ယူ၍ မရနိုင်ပါ။',
+          '“$dateLabel” နေ့စွဲ မှတ်တမ်း (ပစ္စည်း ${record.itemCount} မျိုး • စုစုပေါင်း ${viewModel.formatCostFromMmk(record.totalCostMmk)}) ကို အပြီးဖျက်မည်လား?\n\nဖျက်ပြီးပါက ပြန်ယူ၍ မရနိုင်ပါ။',
     );
     if (confirmed) {
       await viewModel.deletePurchaseRecord(record);
@@ -624,7 +656,7 @@ class _ShoppingSection extends StatelessWidget {
                           context,
                           title: 'ဈေးဝယ်မှတ်တမ်း ဖျက်မည်လား?',
                           message:
-                              '“$dateLabel” နေ့စွဲ မှတ်တမ်း (ပစ္စည်း ${record.itemCount} မျိုး • စုစုပေါင်း ${formatMmk(record.totalCostMmk)}) ကို ဖျက်မည်လား?',
+                              '“$dateLabel” နေ့စွဲ မှတ်တမ်း (ပစ္စည်း ${record.itemCount} မျိုး • စုစုပေါင်း ${viewModel.formatCostFromMmk(record.totalCostMmk)}) ကို ဖျက်မည်လား?',
                         );
                         if (ok) {
                           await viewModel.deletePurchaseRecord(record);
@@ -676,7 +708,7 @@ class _ShoppingSection extends StatelessWidget {
                         ],
                       ),
                       Text(
-                        formatMmk(record.totalCostMmk),
+                        viewModel.formatCostFromMmk(record.totalCostMmk),
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w900,
@@ -820,7 +852,7 @@ class _ShoppingSection extends StatelessWidget {
                               borderRadius: BorderRadius.circular(9),
                             ),
                             child: Text(
-                              formatMmk(line.costMmk),
+                              viewModel.formatCostFromMmk(line.costMmk),
                               style: const TextStyle(
                                 fontWeight: FontWeight.w800,
                                 fontSize: 12,
@@ -887,7 +919,9 @@ class _ShoppingSection extends StatelessWidget {
                     children: [
                       const Text('ဝယ်ရန်ကျန် ခန့်မှန်းဘတ်ဂျက်'),
                       Text(
-                        formatMmk(viewModel.remainingEstimatedBudgetMmk),
+                        viewModel.formatCostFromMmk(
+                          viewModel.remainingEstimatedBudgetMmk,
+                        ),
                         style: Theme.of(context)
                             .textTheme
                             .titleMedium
@@ -903,7 +937,9 @@ class _ShoppingSection extends StatelessWidget {
                     children: [
                       const Text('စုစုပေါင်း ခန့်မှန်း'),
                       Text(
-                        formatMmk(viewModel.totalEstimatedBudgetMmk),
+                        viewModel.formatCostFromMmk(
+                          viewModel.totalEstimatedBudgetMmk,
+                        ),
                         style: Theme.of(context).textTheme.titleSmall?.copyWith(
                               fontWeight: FontWeight.w700,
                             ),
@@ -1025,7 +1061,7 @@ class _ShoppingSection extends StatelessWidget {
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
-                          '≈ ${formatMmk(item.estimatedCostMmk)}',
+                          '≈ ${viewModel.formatCostFromMmk(item.estimatedCostMmk)}',
                           style: const TextStyle(
                             fontWeight: FontWeight.w700,
                             color: AppTheme.neonLime600,
@@ -1074,7 +1110,7 @@ class _ShoppingSection extends StatelessWidget {
                   border: Border.all(color: AppTheme.neonLime600),
                 ),
                 child: Text(
-                  formatMmk(viewModel.totalRecordedSpendMmk),
+                  viewModel.formatCostFromMmk(viewModel.totalRecordedSpendMmk),
                   style: const TextStyle(
                     fontSize: 11.5,
                     fontWeight: FontWeight.w800,
@@ -1123,6 +1159,7 @@ class _ShoppingSection extends StatelessWidget {
           ...records.map(
             (record) => _PurchaseRecordCard(
               record: record,
+              formattedTotal: viewModel.formatCostFromMmk(record.totalCostMmk),
               onTap: () =>
                   _showPurchaseRecordDetailSheet(context, record.dateKey),
               onDeleteTap: () => _confirmAndDeleteRecord(context, record),
@@ -1136,11 +1173,13 @@ class _ShoppingSection extends StatelessWidget {
 class _PurchaseRecordCard extends StatelessWidget {
   const _PurchaseRecordCard({
     required this.record,
+    required this.formattedTotal,
     required this.onTap,
     required this.onDeleteTap,
   });
 
   final DailyPurchaseRecord record;
+  final String formattedTotal;
   final VoidCallback onTap;
   final VoidCallback onDeleteTap;
 
@@ -1284,7 +1323,7 @@ class _PurchaseRecordCard extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        formatMmk(record.totalCostMmk),
+                        formattedTotal,
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w900,
@@ -1337,13 +1376,13 @@ class _RecipesSection extends StatelessWidget {
     BuildContext context,
     Recipe dish,
   ) async {
-    final total = dish.totalEstimatedCostMmk(viewModel.commodities);
+    final totalLocal = viewModel.recipeCostLocal(dish);
     await viewModel.addRecipeIngredientsToChecklist(dish);
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '${dish.name} ဝယ်ရမည့်ပစ္စည်းများ (≈ ${formatMmk(total)}) ကို ဈေးဝယ်စာရင်းထဲ ထည့်ပြီးပါပြီ',
+            '${dish.name} ဝယ်ရမည့်ပစ္စည်းများ (≈ ${viewModel.formatLocalAmount(totalLocal)}) ကို ဈေးဝယ်စာရင်းထဲ ထည့်ပြီးပါပြီ',
           ),
           action: SnackBarAction(
             label: 'စာရင်းကြည့်မည်',
@@ -1360,7 +1399,7 @@ class _RecipesSection extends StatelessWidget {
   ) async {
     final palette = _paletteForRecipe(recipe);
     final commodities = viewModel.commodities;
-    final totalCost = recipe.totalEstimatedCostMmk(commodities);
+    final totalLocal = viewModel.recipeCostLocal(recipe);
     final tierLabel = recipe.budgetTierLabelMm(commodities);
 
     await showModalBottomSheet<void>(
@@ -1633,7 +1672,7 @@ class _RecipesSection extends StatelessWidget {
                                 ),
                                 const SizedBox(width: 5),
                                 Text(
-                                  '≈ ${formatMmk(totalCost)}',
+                                  '≈ ${viewModel.formatLocalAmount(totalLocal)}',
                                   style: const TextStyle(
                                     fontSize: 17,
                                     fontWeight: FontWeight.w900,
@@ -1704,9 +1743,9 @@ class _RecipesSection extends StatelessWidget {
                                     color: AppTheme.white100,
                                   ),
                             ),
-                            const Text(
-                              'လက်ရှိဈေးကွက် ပေါက်ဈေးဖြင့် တစ်ခုချင်း တွက်ချက်ထားပါသည်',
-                              style: TextStyle(
+                            Text(
+                              '${viewModel.activeCountry.flag} ${viewModel.activeCountry.nameMm} (${viewModel.activeCountry.currencyCode}) လက်ရှိဈေးနှုန်းဖြင့် တွက်ချက်ထားပါသည်',
+                              style: const TextStyle(
                                 fontSize: 12,
                                 color: AppTheme.gray200,
                               ),
@@ -1720,11 +1759,8 @@ class _RecipesSection extends StatelessWidget {
                   ...recipe.ingredients.asMap().entries.map((entry) {
                     final idx = entry.key + 1;
                     final ing = entry.value;
-                    final itemCost = ing.estimatedCostMmk(commodities);
-                    final unitRate = ing.unitRateSummaryMm(
-                      commodities,
-                      formatMmk: formatMmk,
-                    );
+                    final itemCost = viewModel.ingredientCostLocal(ing);
+                    final unitRate = viewModel.ingredientUnitSummaryLocal(ing);
                     return Container(
                       margin: const EdgeInsets.only(bottom: 8),
                       padding: const EdgeInsets.symmetric(
@@ -1790,7 +1826,7 @@ class _RecipesSection extends StatelessWidget {
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: Text(
-                              '≈ ${formatMmk(itemCost)}',
+                              '≈ ${viewModel.formatLocalAmount(itemCost)}',
                               style: const TextStyle(
                                 fontWeight: FontWeight.w800,
                                 fontSize: 12.5,
@@ -1812,7 +1848,7 @@ class _RecipesSection extends StatelessWidget {
                       },
                       icon: const Icon(Icons.add_shopping_cart_rounded),
                       label: Text(
-                        'ဝယ်ရမည့်ပစ္စည်းအားလုံး ဈေးဝယ်စာရင်းထဲ ထည့်မည် (≈ ${formatMmk(totalCost)})',
+                        'ဝယ်ရမည့်ပစ္စည်းအားလုံး ဈေးဝယ်စာရင်းထဲ ထည့်မည် (≈ ${viewModel.formatLocalAmount(totalLocal)})',
                       ),
                     ),
                   ),
@@ -1968,6 +2004,9 @@ class _RecipesSection extends StatelessWidget {
     final generalRecipes = viewModel.filteredGeneralRecipes;
     final ethnicRecipes = viewModel.filteredEthnicRecipes;
     final snap = viewModel.marketSnapshot;
+    final country = viewModel.activeCountry;
+    final ipInfo = viewModel.ipLocation;
+    final regionalPrices = viewModel.regionalUnitPrices;
     final keyStaples = [
       'chicken',
       'onion',
@@ -1984,10 +2023,15 @@ class _RecipesSection extends StatelessWidget {
         .whereType<CommodityPrice>()
         .toList();
 
+    final locationBannerText = viewModel.isAutoIpMode
+        ? (ipInfo?.statusSummaryMm ??
+            '${country.flag} ${country.nameMm} (${country.currencyCode})')
+        : '${country.flag} ${country.nameMm} ဈေးနှုန်း (${country.currencyCode}) • ${snap.sourceNote}';
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        // Live Online Market Price & Currency Banner
+        // Live IP Location, 6-Country Market Currency & Commodity Banner
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
@@ -2015,15 +2059,17 @@ class _RecipesSection extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
-                          snap.isOnlineLive
-                              ? Icons.cloud_done_rounded
-                              : Icons.offline_bolt_rounded,
+                          viewModel.isAutoIpMode
+                              ? Icons.my_location_rounded
+                              : (snap.isOnlineLive
+                                  ? Icons.cloud_done_rounded
+                                  : Icons.public_rounded),
                           size: 13,
                           color: AppTheme.obsidian1000,
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          snap.isOnlineLive ? 'ONLINE LIVE' : 'LOCAL RATE',
+                          '${country.flag} ${country.currencyCode}',
                           style: const TextStyle(
                             color: AppTheme.obsidian1000,
                             fontSize: 10.5,
@@ -2036,7 +2082,7 @@ class _RecipesSection extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      snap.sourceNote,
+                      locationBannerText,
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
@@ -2044,6 +2090,24 @@ class _RecipesSection extends StatelessWidget {
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
+                  ),
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    tooltip: 'IP တည်နေရာဖြင့် အလိုအလျောက်ရှာမည်',
+                    onPressed: viewModel.isDetectingLocation
+                        ? null
+                        : viewModel.refreshIpLocation,
+                    icon: viewModel.isDetectingLocation
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(
+                            Icons.my_location_rounded,
+                            color: AppTheme.neonLime600,
+                            size: 19,
+                          ),
                   ),
                   IconButton(
                     visualDensity: VisualDensity.compact,
@@ -2069,27 +2133,61 @@ class _RecipesSection extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 8),
+              // Strictly 6 supported regional markets + Auto IP mode
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: ChoiceChip(
+                        label: const Text('📍 Auto (IP)'),
+                        selected: viewModel.isAutoIpMode,
+                        onSelected: (_) =>
+                            viewModel.setCountrySelection('auto'),
+                      ),
+                    ),
+                    ...SupportedMarketCountry.values.map(
+                      (c) => Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: ChoiceChip(
+                          label: Text('${c.flag} ${c.nameMm} (${c.currencyCode})'),
+                          selected:
+                              !viewModel.isAutoIpMode && viewModel.activeCountry == c,
+                          onSelected: (_) =>
+                              viewModel.setCountrySelection(c.isoCode),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(
                   children: keyStaples
                       .map(
-                        (c) => Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: ActionChip(
-                            backgroundColor: const Color(0xFF1F2812),
-                            side: const BorderSide(color: AppTheme.olive800),
-                            label: Text(
-                              '${c.nameMm} (${c.unitLabelMm}): ${formatMmk(c.currentPriceMmk)}',
-                              style: const TextStyle(
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w700,
-                                color: AppTheme.neonLime500,
+                        (c) {
+                          final localPrice =
+                              regionalPrices[c.id] ?? c.currentPriceMmk.toDouble();
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: ActionChip(
+                              backgroundColor: const Color(0xFF1F2812),
+                              side: const BorderSide(color: AppTheme.olive800),
+                              label: Text(
+                                '${c.nameMm} (${c.unitLabelMm}): ${viewModel.formatLocalAmount(localPrice)}',
+                                style: const TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppTheme.neonLime500,
+                                ),
                               ),
+                              onPressed: () => onEditCommodity(c),
                             ),
-                            onPressed: () => onEditCommodity(c),
-                          ),
-                        ),
+                          );
+                        },
                       )
                       .toList(),
                 ),
