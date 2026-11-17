@@ -1,0 +1,148 @@
+{
+  "version": 1,
+  "sources": [
+    "Myanmar Ministry of Health (MOHS) National EPI Immunization Schedule",
+    "World Health Organization (WHO) Child Growth Standards (Weight-for-Age 0-60 months) & ANC Guidelines"
+  ],
+  "disclaimerMm": "ဤကဏ္ဍပါ အချက်အလက်များသည် မြန်မာနိုင်ငံ ကျန်းမာရေးဝန်ကြီးဌာန (EPI) နှင့် ကမ္ဘာ့ကျန်းမာရေးအဖွဲ့ (WHO) စံနှုန်းများအပေါ် အခြေခံသည့် ကျန်းမာရေးမှတ်တမ်းနှင့် အကြံပြုလမ်းညွှန်ချက်သာ ဖြစ်ပါသည်။ ရောဂါရှာဖွေကုသမှု အစားထိုးမဟုတ်ပါ။ အရေးပေါ်လက္ခဏာများ တွေ့ရှိပါက နီးစပ်ရာ ဆေးရုံ/ဆေးခန်း သို့မဟုတ် ဆရာဝန်နှင့် ချက်ချင်းပြသပါ။",
+  "epiChildSchedule": [
+    {
+      "code": "BCG",
+      "nameMm": "BCG (တီဘီကာကွယ်ဆေး)",
+      "doseLabelMm": "မွေးစ - ၂ လအတွင်း (၁ ကြိမ်)",
+      "dueAgeDays": 0,
+      "protectAgainstMm": "ပြင်းထန် တီဘီရောဂါ"
+    },
+    {
+      "code": "HEPB_BIRTH",
+      "nameMm": "HepB Birth Dose (ဘီပိုးကာကွယ်ဆေး)",
+      "doseLabelMm": "မွေးပြီး ၂၄ နာရီအတွင်း (၁ ကြိမ်)",
+      "dueAgeDays": 1,
+      "protectAgainstMm": "မိခင်မှကလေးသို့ အသည်းရောင်အသားဝါ ဘီပိုးကူးစက်ခြင်း"
+    },
+    {
+      "code": "PENTA_1",
+      "nameMm": "Pentavalent (၅ မျိုးစပ် ကာကွယ်ဆေး)",
+      "doseLabelMm": "၂ လ (ပထမအကြိမ်)",
+      "dueAgeDays": 60,
+      "protectAgainstMm": "ဆုံဆို့၊ ကြက်ညှာ၊ မေးခိုင်၊ ဘီပိုး၊ ဦးနှောက်အမြှေးရောင်"
+    },
+    {
+      "code": "OPV_1",
+      "nameMm": "OPV (ပိုလီယို အစက်ချဆေး)",
+      "doseLabelMm": "၂ လ (ပထမအကြိမ်)",
+      "dueAgeDays": 60,
+      "protectAgainstMm": "ပိုလီယို အကြောသေရောဂါ"
+    },
+    {
+      "code": "PCV_1",
+      "nameMm": "PCV (ပြင်းထန်အဆုတ်ရောင် ကာကွယ်ဆေး)",
+      "doseLabelMm": "၂ လ (ပထမအကြိမ်)",
+      "dueAgeDays": 60,
+      "protectAgainstMm": "နမိုးနီးယား ပြင်းထန်အဆုတ်ရောင်နှင့် နားအူရောင်"
+    },
+    {
+      "code": "ROTA_1",
+      "nameMm": "Rotavirus (ဝမ်းပျက်ဝမ်းလျှော အစက်ချ)",
+      "doseLabelMm": "၂ လ (ပထမအကြိမ်)",
+      "dueAgeDays": 60,
+      "protectAgainstMm": "ရိုတာဗိုင်းရပ်စ် ဝမ်းပျက်ဝမ်းလျှောရောဂါ"
+    },
+    {
+      "code": "PENTA_2",
+      "nameMm": "Pentavalent (၅ မျိုးစပ် ကာကွယ်ဆေး)",
+      "doseLabelMm": "၄ လ (ဒုတိယအကြိမ်)",
+      "dueAgeDays": 120,
+      "protectAgainstMm": "ဆုံဆို့၊ ကြက်ညှာ၊ မေးခိုင်၊ ဘီပိုး၊ Hib"
+    },
+    {
+      "code": "OPV_2",
+      "nameMm": "OPV (ပိုလီယို အစက်ချဆေး)",
+      "doseLabelMm": "၄ လ (ဒုတိယအကြိမ်)",
+      "dueAgeDays": 120,
+      "protectAgainstMm": "ပိုလီယို အကြောသေရောဂါ"
+    },
+    {
+      "code": "IPV_1",
+      "nameMm": "IPV (ပိုလီယို ထိုးဆေး)",
+      "doseLabelMm": "၄ လ (တစ်ကြိမ်)",
+      "dueAgeDays": 120,
+      "protectAgainstMm": "ပိုလီယို အကြောသေရောဂါ ထပ်ဆောင်းကာကွယ်မှု"
+    },
+    {
+      "code": "PCV_2",
+      "nameMm": "PCV (ပြင်းထန်အဆုတ်ရောင် ကာကွယ်ဆေး)",
+      "doseLabelMm": "၄ လ (ဒုတိယအကြိမ်)",
+      "dueAgeDays": 120,
+      "protectAgainstMm": "နမိုးနီးယား ပြင်းထန်အဆုတ်ရောင်"
+    },
+    {
+      "code": "ROTA_2",
+      "nameMm": "Rotavirus (ဝမ်းပျက်ဝမ်းလျှော အစက်ချ)",
+      "doseLabelMm": "၄ လ (ဒုတိယအကြိမ်)",
+      "dueAgeDays": 120,
+      "protectAgainstMm": "ရိုတာဗိုင်းရပ်စ် ဝမ်းပျက်ဝမ်းလျှောရောဂါ"
+    },
+    {
+      "code": "PENTA_3",
+      "nameMm": "Pentavalent (၅ မျိုးစပ် ကာကွယ်ဆေး)",
+      "doseLabelMm": "၆ လ (တတိယအကြိမ်)",
+      "dueAgeDays": 180,
+      "protectAgainstMm": "ဆုံဆို့၊ ကြက်ညှာ၊ မေးခိုင်၊ ဘီပိုး၊ Hib"
+    },
+    {
+      "code": "OPV_3",
+      "nameMm": "OPV (ပိုလီယို အစက်ချဆေး)",
+      "doseLabelMm": "၆ လ (တတိယအကြိမ်)",
+      "dueAgeDays": 180,
+      "protectAgainstMm": "ပိုလီယို အကြောသေရောဂါ"
+    },
+    {
+      "code": "PCV_3",
+      "nameMm": "PCV (ပြင်းထန်အဆုတ်ရောင် ကာကွယ်ဆေး)",
+      "doseLabelMm": "၆ လ (တတိယအကြိမ်)",
+      "dueAgeDays": 180,
+      "protectAgainstMm": "နမိုးနီးယား ပြင်းထန်အဆုတ်ရောင်"
+    },
+    {
+      "code": "MR_1",
+      "nameMm": "MR (ဝက်သက်-ဂျိုက်သိုး ကာကွယ်ဆေး)",
+      "doseLabelMm": "၉ လ (ပထမအကြိမ်)",
+      "dueAgeDays": 270,
+      "protectAgainstMm": "ဝက်သက်နှင့် ဂျိုက်သိုးရောဂါ"
+    },
+    {
+      "code": "JE_1",
+      "nameMm": "JE (ဂျပန်ဦးနှောက်ရောင် ကာကွယ်ဆေး)",
+      "doseLabelMm": "၉ လ (တစ်ကြိမ်)",
+      "dueAgeDays": 270,
+      "protectAgainstMm": "ဂျပန်ဦးနှောက်ရောင်ရောဂါ"
+    },
+    {
+      "code": "MR_2",
+      "nameMm": "MR (ဝက်သက်-ဂျိုက်သိုး ဒုတိယအကြိမ်)",
+      "doseLabelMm": "၁၈ လ (၁ နှစ်ခွဲ)",
+      "dueAgeDays": 548,
+      "protectAgainstMm": "ဝက်သက်နှင့် ဂျိုက်သိုးရောဂါ ရေရှည်ခုခံအား"
+    },
+    {
+      "code": "PENTA_BOOSTER",
+      "nameMm": "Pentavalent Booster (အားဖြည့်ကာကွယ်ဆေး)",
+      "doseLabelMm": "၁၈ လ (၁ နှစ်ခွဲ)",
+      "dueAgeDays": 548,
+      "protectAgainstMm": "ဆုံဆို့၊ ကြက်ညှာ၊ မေးခိုင်၊ ဘီပိုး၊ Hib အားဖြည့်"
+    }
+  ],
+  "whoWeightMedianKg": [
+    {"months": 0, "boy": 3.3, "girl": 3.2},
+    {"months": 3, "boy": 6.4, "girl": 5.8},
+    {"months": 6, "boy": 7.9, "girl": 7.3},
+    {"months": 9, "boy": 8.9, "girl": 8.2},
+    {"months": 12, "boy": 9.6, "girl": 8.9},
+    {"months": 18, "boy": 10.9, "girl": 10.2},
+    {"months": 24, "boy": 12.2, "girl": 11.5},
+    {"months": 36, "boy": 14.3, "girl": 13.9},
+    {"months": 48, "boy": 16.3, "girl": 16.1},
+    {"months": 60, "boy": 18.3, "girl": 18.2}
+  ]
+}
