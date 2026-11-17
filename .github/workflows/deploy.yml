@@ -42,7 +42,10 @@ jobs:
 
       - name: Build release installable PWA for GitHub Pages
         run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
           flutter build web --release --no-tree-shake-icons --base-href="/myanmar-daily-app/"
+          sed -i 's|"main.dart.js"|"main.dart.js?v='"${SHORT_SHA}"'"|g' build/web/flutter_bootstrap.js
+          sed -i 's|src="flutter_bootstrap.js"|src="flutter_bootstrap.js?v='"${SHORT_SHA}"'"|g' build/web/index.html
           cp build/web/index.html build/web/404.html
           cp build/web/favicon.png build/web/favicon.ico || true
 
