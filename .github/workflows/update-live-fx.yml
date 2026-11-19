@@ -1,0 +1,40 @@
+name: Update Live Myanmar FX Feed
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: "update-live-fx"
+  cancel-in-progress: true
+
+jobs:
+  update_fx:
+    name: Fetch Live USD/MMK & Gold Rates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Fetch live Myanmar market FX JSON
+        run: python3 scripts/fetch_live_fx.py /tmp/live_fx.json
+
+      - name: Publish live_fx.json to fx-data branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan fx-data
+          git rm -rf . >/dev/null 2>&1 || true
+          cp /tmp/live_fx.json live_fx.json
+          git add live_fx.json
+          git commit -m "chore(fx): live Myanmar market FX update"
+          git push -f origin fx-data

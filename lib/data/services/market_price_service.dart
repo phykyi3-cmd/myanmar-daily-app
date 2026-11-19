@@ -1,187 +1,259 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../domain/models/commodity_price.dart';
 
-/// Fetches live online exchange rates (USD, THB, SGD, CNY, MYR, EUR, JPY, KRW)
-/// and live World Spot Gold (XAU/USD), dynamically computing Myanmar gold
-/// (၁၆ ပဲရည် / ၁၅ ပဲရည်) and 24 kitchen commodity prices.
+/// Fetches live online Myanmar market USD/MMK rates (via automated 30-min live P2P/market
+/// feed on GitHub `fx-data` + direct native Bybit/Bitget P2P orderbooks on mobile),
+/// live global cross-rates (USD, THB, MYR, SGD, KRW, JPY, CNY, EUR), and live World Spot Gold (XAU/USD).
 class MarketPriceService {
+  MarketPriceService({http.Client? httpClient})
+      : _httpClient = httpClient ?? http.Client();
+
+  final http.Client _httpClient;
+
+  /// CORS-enabled live JSON updated every 30 minutes from Bybit P2P, Bitget P2P,
+  /// Remitly, Open-ER-API, and Gold-API via `.github/workflows/update-live-fx.yml`.
+  static const String liveMyanmarFxFeedUrl =
+      'https://raw.githubusercontent.com/phykyi3-cmd/myanmar-daily-app/fx-data/live_fx.json';
   static const String _liveExchangeApiUrl =
       'https://open.er-api.com/v6/latest/USD';
   static const String _liveGoldApiUrl = 'https://api.gold-api.com/price/XAU';
-  static const String _customOverridesKey = 'user_commodity_overrides_v2';
-  static const int _baselineMarketUsdMmk = 4500;
-  static const double _baselineThbPerUsd = 34.00;
-  static const double _baselineCnyPerUsd = 7.15;
+  static const String _bybitP2pUrl =
+      'https://api2.bybit.com/fiat/otc/item/online';
+  static const String _bitgetP2pUrl =
+      'https://www.bitget.com/v1/p2p/pub/adv/queryAdvList';
 
-  /// Fetches live currency rates and spot gold online, scaling Myanmar gold, FX, and commodity prices.
+  static const String _customOverridesKey = 'user_commodity_overrides_v2';
+  static const String _customUsdKey = 'user_usd_market_mmk';
+  static const String _customGoldKey = 'user_gold_16pae_mmk';
+  static const String _rateTierKey = 'market_rate_tier_v1';
+
+  static const int _baselineMarketUsdMmk = 4650;
+  static const int _baselineP2pBuyMmk = 5125;
+  static const int _baselineP2pSellMmk = 5070;
+  static const int _baselineRemitMmk = 3875;
+  static const double _baselineThbPerUsd = 34.00;
+  static const double _baselineMyrPerUsd = 4.12;
+  static const double _baselineSgdPerUsd = 1.29;
+  static const double _baselineCnyPerUsd = 6.70;
+  static const double _baselineEurPerUsd = 0.91;
+  static const double _baselineJpyPerUsd = 159.0;
+  static const double _baselineKrwPerUsd = 1335.0;
+
+  /// Fetches live Myanmar market USD/MMK, cross-currency FX, and spot gold online.
   Future<MarketPriceSnapshot> syncLiveMarketPrices({
     int? customUsdMarketMmk,
+  }) =>
+      _syncInternal(customUsdMarketMmk: customUsdMarketMmk);
+
+  Future<MarketPriceSnapshot> _syncInternal({
+    int? customUsdMarketMmk,
+    MarketRateTier? overrideTier,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final overrides = _loadUserOverrides(prefs);
 
-    double? liveXauUsd;
-    try {
-      final goldResp = await http
-          .get(Uri.parse(_liveGoldApiUrl))
-          .timeout(const Duration(seconds: 6));
-      if (goldResp.statusCode == 200) {
-        final gJson = jsonDecode(goldResp.body) as Map<String, dynamic>;
-        liveXauUsd = (gJson['price'] as num?)?.toDouble();
-      }
-    } catch (_) {}
+    final savedCustomUsd = customUsdMarketMmk ?? prefs.getInt(_customUsdKey);
+    final savedTier = overrideTier ??
+        (savedCustomUsd != null
+            ? MarketRateTier.custom
+            : MarketRateTier.fromName(prefs.getString(_rateTierKey)));
 
-    try {
-      final response = await http
-          .get(Uri.parse(_liveExchangeApiUrl))
-          .timeout(const Duration(seconds: 8));
+    // 1. Fetch live Myanmar FX feed, global FX cross-rates, and World Spot Gold in parallel.
+    final results = await Future.wait<dynamic>([
+      _fetchMyanmarLiveFeed(),
+      _fetchGlobalCrossRates(),
+      _fetchWorldGoldUsd(),
+    ]);
 
-      if (response.statusCode == 200) {
-        final decoded = jsonDecode(response.body) as Map<String, dynamic>;
-        final rates = (decoded['rates'] as Map<String, dynamic>?) ?? const {};
-        final thbPerUsd =
-            (rates['THB'] as num?)?.toDouble() ?? _baselineThbPerUsd;
-        final cnyPerUsd =
-            (rates['CNY'] as num?)?.toDouble() ?? _baselineCnyPerUsd;
-        final sgdPerUsd = (rates['SGD'] as num?)?.toDouble() ?? 1.32;
-        final myrPerUsd = (rates['MYR'] as num?)?.toDouble() ?? 4.20;
-        final eurPerUsd = (rates['EUR'] as num?)?.toDouble() ?? 0.91;
-        final jpyPerUsd = (rates['JPY'] as num?)?.toDouble() ?? 155.0;
-        final krwPerUsd = (rates['KRW'] as num?)?.toDouble() ?? 1350.0;
-        final officialMmk = (rates['MMK'] as num?)?.toDouble() ?? 2100.0;
+    final feed = results[0] as _MyanmarFxFeed?;
+    final liveGlobal = results[1] as Map<String, double>?;
+    final liveGoldUsd = results[2] as double?;
 
-        // Compute live regional trade basket index (THB + CNY movement vs USD).
-        final thbDrift = thbPerUsd / _baselineThbPerUsd;
-        final cnyDrift = cnyPerUsd / _baselineCnyPerUsd;
-        final liveBasketFactor = (thbDrift * 0.6) + (cnyDrift * 0.4);
-
-        final liveDerivedUsdMmk = officialMmk > 3000
-            ? officialMmk.round()
-            : ((_baselineMarketUsdMmk * liveBasketFactor) / 10).round() * 10;
-
-        final effectiveUsdMmk = customUsdMarketMmk ??
-            prefs.getInt('user_usd_market_mmk') ??
-            liveDerivedUsdMmk;
-        final effectiveThbMmk = (effectiveUsdMmk / thbPerUsd).round();
-
-        final worldGoldUsd = liveXauUsd ?? 3885.0;
-        // Myanmar 16-Pae-Yae (အခေါက်ရွှေ ၁ ကျပ်သား) = (World Gold USD/oz / 1.875) * market USD rate
-        final computedGold16Pae =
-            (((worldGoldUsd / 1.875) * effectiveUsdMmk) / 5000).round() * 5000;
-        final effectiveGold16Pae =
-            prefs.getInt('user_gold_16pae_mmk') ?? computedGold16Pae;
-        final effectiveGold15Pae =
-            (((effectiveGold16Pae * 15) / 16) / 5000).round() * 5000;
-
-        final foreignRatesMmk = <String, double>{
-          'USD': effectiveUsdMmk.toDouble(),
-          'THB': double.parse((effectiveUsdMmk / thbPerUsd).toStringAsFixed(1)),
-          'SGD': double.parse((effectiveUsdMmk / sgdPerUsd).toStringAsFixed(0)),
-          'CNY': double.parse((effectiveUsdMmk / cnyPerUsd).toStringAsFixed(1)),
-          'MYR': double.parse((effectiveUsdMmk / myrPerUsd).toStringAsFixed(1)),
-          'EUR': double.parse((effectiveUsdMmk / eurPerUsd).toStringAsFixed(0)),
-          'JPY (100)': double.parse(
-            ((effectiveUsdMmk / jpyPerUsd) * 100).toStringAsFixed(0),
-          ),
-          'KRW (1000)': double.parse(
-            ((effectiveUsdMmk / krwPerUsd) * 1000).toStringAsFixed(0),
-          ),
-        };
-
-        final ratio = effectiveUsdMmk / _baselineMarketUsdMmk;
-        final defaults = MarketPriceSnapshot.defaultCommodities();
-        final updated = <String, CommodityPrice>{};
-
-        for (final entry in defaults.entries) {
-          final customPrice = overrides[entry.key];
-          if (customPrice != null && customPrice > 0) {
-            updated[entry.key] =
-                entry.value.copyWith(currentPriceMmk: customPrice);
-          } else {
-            final step = entry.value.basePriceMmk >= 1000 ? 50 : 10;
-            final scaledPrice =
-                ((entry.value.basePriceMmk * ratio) / step).round() * step;
-            updated[entry.key] = entry.value.copyWith(
-              currentPriceMmk:
-                  scaledPrice > 0 ? scaledPrice : entry.value.basePriceMmk,
-            );
-          }
-        }
-
-        final snapshot = MarketPriceSnapshot(
-          usdMarketMmk: effectiveUsdMmk,
-          thbMarketMmk: effectiveThbMmk,
-          worldGoldUsdPerOz:
-              double.parse(worldGoldUsd.toStringAsFixed(1)),
-          myanmarGold16PaeMmk: effectiveGold16Pae,
-          myanmarGold15PaeMmk: effectiveGold15Pae,
-          foreignRatesMmk: foreignRatesMmk,
-          commodities: updated,
-          lastSyncedAt: DateTime.now(),
-          isOnlineLive: true,
-          sourceNote:
-              'Online Live (1 USD ≈ $effectiveUsdMmk ကျပ် • 1 THB ≈ $effectiveThbMmk ကျပ် • ကမ္ဘာ့ရွှေ \$${worldGoldUsd.toStringAsFixed(0)}/oz)',
-        );
-        return snapshot;
-      }
-    } catch (_) {
-      // Fall back to local scaled snapshot when offline.
+    // 2. On native mobile/desktop (!kIsWeb), if feed is missing or >45 min stale,
+    //    query Bybit / Bitget P2P orderbooks directly for second-by-second live rates.
+    _LiveP2pQuote? directP2p;
+    final feedStale = feed == null ||
+        (feed.updatedAtUtc != null &&
+            DateTime.now().toUtc().difference(feed.updatedAtUtc!).inMinutes >
+                45);
+    if (!kIsWeb && feedStale) {
+      directP2p = await _fetchDirectNativeP2pQuote();
     }
 
-    final savedUsd = customUsdMarketMmk ??
-        prefs.getInt('user_usd_market_mmk') ??
-        _baselineMarketUsdMmk;
-    final worldGoldUsd = liveXauUsd ?? 3885.0;
-    final computedGold16 =
-        (((worldGoldUsd / 1.875) * savedUsd) / 5000).round() * 5000;
-    final effectiveGold16 = prefs.getInt('user_gold_16pae_mmk') ?? computedGold16;
-    final effectiveGold15 =
-        (((effectiveGold16 * 15) / 16) / 5000).round() * 5000;
+    final bool hasLiveMmkFeed = feed != null || directP2p != null;
+    final bool hasAnyLiveOnline =
+        hasLiveMmkFeed || liveGlobal != null || liveGoldUsd != null;
 
-    final ratio = savedUsd / _baselineMarketUsdMmk;
+    final int p2pBuy = directP2p?.buyMmk ??
+        feed?.usdP2pBuyMmk ??
+        _baselineP2pBuyMmk;
+    final int p2pSell = directP2p?.sellMmk ??
+        feed?.usdP2pSellMmk ??
+        _baselineP2pSellMmk;
+    final int p2pMid = directP2p?.midMmk ??
+        feed?.usdP2pMidMmk ??
+        ((p2pBuy + p2pSell) / 2).round();
+    final int cashMarketUsd = directP2p != null
+        ? ((p2pMid * 0.912) / 5).round() * 5
+        : (feed?.usdCashMarketMmk ?? _baselineMarketUsdMmk);
+    final int remitUsd = feed?.usdRemitMmk ?? _baselineRemitMmk;
+
+    final MarketRateTier effectiveTier =
+        (savedTier == MarketRateTier.custom && savedCustomUsd != null)
+            ? MarketRateTier.custom
+            : (savedTier == MarketRateTier.custom
+                ? MarketRateTier.cashMarket
+                : savedTier);
+
+    final int effectiveUsdMmk = switch (effectiveTier) {
+      MarketRateTier.cashMarket => cashMarketUsd,
+      MarketRateTier.usdtP2p => p2pMid,
+      MarketRateTier.bankRemit => remitUsd,
+      MarketRateTier.custom => savedCustomUsd ?? cashMarketUsd,
+    };
+
+    // Merge global cross-rates (direct Open-ER-API preferred, fallback to feed, then baselines).
+    final feedGlobal = feed?.globalRatesPerUsd ?? const <String, double>{};
+    double ratePerUsd(String code, double fallback) {
+      final liveVal = liveGlobal?[code];
+      if (liveVal != null && liveVal > 0) return liveVal;
+      final feedVal = feedGlobal[code];
+      if (feedVal != null && feedVal > 0) return feedVal;
+      return fallback;
+    }
+
+    final thbPerUsd = ratePerUsd('THB', _baselineThbPerUsd);
+    final myrPerUsd = ratePerUsd('MYR', _baselineMyrPerUsd);
+    final sgdPerUsd = ratePerUsd('SGD', _baselineSgdPerUsd);
+    final krwPerUsd = ratePerUsd('KRW', _baselineKrwPerUsd);
+    final jpyPerUsd = ratePerUsd('JPY', _baselineJpyPerUsd);
+    final cnyPerUsd = ratePerUsd('CNY', _baselineCnyPerUsd);
+    final eurPerUsd = ratePerUsd('EUR', _baselineEurPerUsd);
+
+    final effectiveThbMmk = (effectiveUsdMmk / thbPerUsd).round();
+
+    final worldGoldUsd = liveGoldUsd ?? feed?.worldGoldUsdPerOz ?? 3732.0;
+    // Myanmar 16-Pae-Yae (အခေါက်ရွှေ ၁ ကျပ်သား) = (World Gold USD/oz / 1.875) * active USD rate
+    final computedGold16Pae =
+        (((worldGoldUsd / 1.875) * effectiveUsdMmk) / 5000).round() * 5000;
+    final effectiveGold16Pae =
+        prefs.getInt(_customGoldKey) ?? computedGold16Pae;
+    final effectiveGold15Pae =
+        (((effectiveGold16Pae * 15) / 16) / 5000).round() * 5000;
+
+    // Exact 1-unit MMK rates ordered for Myanmar & diaspora users.
+    final foreignRatesMmk = <String, double>{
+      'USD': effectiveUsdMmk.toDouble(),
+      'THB': double.parse((effectiveUsdMmk / thbPerUsd).toStringAsFixed(1)),
+      'MYR': double.parse((effectiveUsdMmk / myrPerUsd).toStringAsFixed(1)),
+      'SGD': double.parse((effectiveUsdMmk / sgdPerUsd).toStringAsFixed(0)),
+      'KRW': double.parse((effectiveUsdMmk / krwPerUsd).toStringAsFixed(2)),
+      'JPY': double.parse((effectiveUsdMmk / jpyPerUsd).toStringAsFixed(1)),
+      'CNY': double.parse((effectiveUsdMmk / cnyPerUsd).toStringAsFixed(1)),
+      'EUR': double.parse((effectiveUsdMmk / eurPerUsd).toStringAsFixed(0)),
+    };
+
+    final ratio = effectiveUsdMmk / _baselineMarketUsdMmk;
     final defaults = MarketPriceSnapshot.defaultCommodities();
-    final fallbackMap = <String, CommodityPrice>{};
+    final updatedCommodities = <String, CommodityPrice>{};
     for (final entry in defaults.entries) {
       final customPrice = overrides[entry.key];
-      final step = entry.value.basePriceMmk >= 1000 ? 50 : 10;
-      final scaledPrice =
-          ((entry.value.basePriceMmk * ratio) / step).round() * step;
-      fallbackMap[entry.key] = entry.value.copyWith(
-        currentPriceMmk: customPrice ?? scaledPrice,
-      );
+      if (customPrice != null && customPrice > 0) {
+        updatedCommodities[entry.key] =
+            entry.value.copyWith(currentPriceMmk: customPrice);
+      } else {
+        final step = entry.value.basePriceMmk >= 1000 ? 50 : 10;
+        final scaledPrice =
+            ((entry.value.basePriceMmk * ratio) / step).round() * step;
+        updatedCommodities[entry.key] = entry.value.copyWith(
+          currentPriceMmk:
+              scaledPrice > 0 ? scaledPrice : entry.value.basePriceMmk,
+        );
+      }
     }
 
+    final liveSources = <String>[
+      if (directP2p != null) ...directP2p.sources,
+      if (feed != null) ...feed.sources,
+      if (liveGlobal != null && !(feed?.sources.contains('Open-ER-API') ?? false))
+        'Open-ER-API',
+      if (liveGoldUsd != null && !(feed?.sources.contains('Gold-API') ?? false))
+        'Gold-API',
+    ];
+
+    final tierTag = switch (effectiveTier) {
+      MarketRateTier.cashMarket => 'ပြင်ပပေါက်ဈေး Live',
+      MarketRateTier.usdtP2p => 'USDT P2P Live (ဝယ် $p2pSell/ရောင်း $p2pBuy)',
+      MarketRateTier.bankRemit => 'ဘဏ်/ငွေလွှဲ Live',
+      MarketRateTier.custom => 'မိမိသတ်မှတ်နှုန်း',
+    };
+
+    final sourceNote = hasAnyLiveOnline
+        ? '$tierTag • 1 USD ≈ $effectiveUsdMmk ကျပ် • 1 MYR ≈ ${foreignRatesMmk['MYR']?.round()} ကျပ် • XAU \$${worldGoldUsd.toStringAsFixed(0)}/oz'
+        : 'Offline ခန့်မှန်းပေါက်ဈေး (1 USD ≈ $effectiveUsdMmk ကျပ်)';
+
     return MarketPriceSnapshot(
-      usdMarketMmk: savedUsd,
-      thbMarketMmk: (savedUsd / _baselineThbPerUsd).round(),
-      worldGoldUsdPerOz: worldGoldUsd,
-      myanmarGold16PaeMmk: effectiveGold16,
-      myanmarGold15PaeMmk: effectiveGold15,
-      commodities: fallbackMap,
+      usdMarketMmk: effectiveUsdMmk,
+      thbMarketMmk: effectiveThbMmk,
+      worldGoldUsdPerOz: double.parse(worldGoldUsd.toStringAsFixed(1)),
+      myanmarGold16PaeMmk: effectiveGold16Pae,
+      myanmarGold15PaeMmk: effectiveGold15Pae,
+      usdCashMarketMmk: cashMarketUsd,
+      usdP2pBuyMmk: p2pBuy,
+      usdP2pSellMmk: p2pSell,
+      usdP2pMidMmk: p2pMid,
+      usdRemitMmk: remitUsd,
+      activeRateTier: effectiveTier,
+      feedUpdatedAtUtc: directP2p != null
+          ? DateTime.now().toUtc()
+          : feed?.updatedAtUtc,
+      liveSources: liveSources,
+      foreignRatesMmk: foreignRatesMmk,
+      commodities: updatedCommodities,
       lastSyncedAt: DateTime.now(),
-      isOnlineLive: false,
-      sourceNote: 'Offline ခန့်မှန်းပေါက်ဈေး (1 USD ≈ $savedUsd ကျပ်)',
+      isOnlineLive: hasAnyLiveOnline,
+      sourceNote: sourceNote,
     );
   }
 
-  /// Updates the Myanmar market USD/MMK rate, clears individual overrides so all
-  /// commodities and gold prices scale dynamically with the new USD rate, and re-syncs.
+  /// Switches between Live Market Cash, Live USDT P2P, and Live Bank/Remit tiers.
+  Future<MarketPriceSnapshot> setMarketRateTier(MarketRateTier tier) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_rateTierKey, tier.name);
+    if (tier != MarketRateTier.custom) {
+      await prefs.remove(_customUsdKey);
+      await prefs.remove(_customGoldKey);
+    }
+    return _syncInternal(overrideTier: tier);
+  }
+
+  /// Resets any manual custom USD override back to automated live Myanmar market sync.
+  Future<MarketPriceSnapshot> resetToLiveMarketRate() async {
+    return setMarketRateTier(MarketRateTier.cashMarket);
+  }
+
+  /// Updates the Myanmar market USD/MMK rate manually, scaling all currencies, commodities, and gold.
   Future<MarketPriceSnapshot> updateUsdMarketRate(int newUsdMmk) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('user_usd_market_mmk', newUsdMmk);
+    await prefs.setInt(_customUsdKey, newUsdMmk);
+    await prefs.setString(_rateTierKey, MarketRateTier.custom.name);
     await prefs.remove(_customOverridesKey);
-    await prefs.remove('user_gold_16pae_mmk');
-    return syncLiveMarketPrices(customUsdMarketMmk: newUsdMmk);
+    await prefs.remove(_customGoldKey);
+    return _syncInternal(
+      customUsdMarketMmk: newUsdMmk,
+      overrideTier: MarketRateTier.custom,
+    );
   }
 
   /// Updates the Myanmar 16-Pae-Yae gold price (၁ ကျပ်သား) and recalculates 15-Pae-Yae.
   Future<MarketPriceSnapshot> updateMyanmarGoldPrice(int newGold16PaeMmk) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('user_gold_16pae_mmk', newGold16PaeMmk);
+    await prefs.setInt(_customGoldKey, newGold16PaeMmk);
     return syncLiveMarketPrices();
   }
 
@@ -208,11 +280,214 @@ class MarketPriceService {
       worldGoldUsdPerOz: current.worldGoldUsdPerOz,
       myanmarGold16PaeMmk: current.myanmarGold16PaeMmk,
       myanmarGold15PaeMmk: current.myanmarGold15PaeMmk,
+      usdCashMarketMmk: current.usdCashMarketMmk,
+      usdP2pBuyMmk: current.usdP2pBuyMmk,
+      usdP2pSellMmk: current.usdP2pSellMmk,
+      usdP2pMidMmk: current.usdP2pMidMmk,
+      usdRemitMmk: current.usdRemitMmk,
+      activeRateTier: current.activeRateTier,
+      feedUpdatedAtUtc: current.feedUpdatedAtUtc,
+      liveSources: current.liveSources,
       foreignRatesMmk: current.foreignRatesMmk,
       commodities: updatedMap,
       lastSyncedAt: DateTime.now(),
       isOnlineLive: current.isOnlineLive,
       sourceNote: current.sourceNote,
+    );
+  }
+
+  Future<_MyanmarFxFeed?> _fetchMyanmarLiveFeed() async {
+    try {
+      final bucket = DateTime.now().millisecondsSinceEpoch ~/ (5 * 60 * 1000);
+      final uri = Uri.parse('$liveMyanmarFxFeedUrl?t=$bucket');
+      final resp = await _httpClient
+          .get(uri)
+          .timeout(const Duration(seconds: 7));
+      if (resp.statusCode != 200) return null;
+
+      final decoded = jsonDecode(resp.body) as Map<String, dynamic>;
+      final cash = (decoded['usdCashMarketMmk'] as num?)?.round();
+      final buy = (decoded['usdP2pBuyMmk'] as num?)?.round();
+      final sell = (decoded['usdP2pSellMmk'] as num?)?.round();
+      final mid = (decoded['usdP2pMidMmk'] as num?)?.round();
+      final remit = (decoded['usdRemitMmk'] as num?)?.round();
+      if (cash == null || cash < 2500 || cash > 15000) return null;
+
+      final rawGlobal = decoded['globalRatesPerUsd'];
+      final globalMap = <String, double>{};
+      if (rawGlobal is Map<String, dynamic>) {
+        for (final entry in rawGlobal.entries) {
+          if (entry.value is num && (entry.value as num) > 0) {
+            globalMap[entry.key] = (entry.value as num).toDouble();
+          }
+        }
+      }
+
+      final sourcesRaw = decoded['sources'];
+      final sources = sourcesRaw is List
+          ? sourcesRaw.whereType<String>().toList()
+          : const <String>[];
+
+      return _MyanmarFxFeed(
+        usdCashMarketMmk: cash,
+        usdP2pBuyMmk: buy ?? _baselineP2pBuyMmk,
+        usdP2pSellMmk: sell ?? _baselineP2pSellMmk,
+        usdP2pMidMmk: mid ?? ((buy ?? _baselineP2pBuyMmk) + (sell ?? _baselineP2pSellMmk)) ~/ 2,
+        usdRemitMmk: remit ?? _baselineRemitMmk,
+        worldGoldUsdPerOz: (decoded['worldGoldUsdPerOz'] as num?)?.toDouble(),
+        globalRatesPerUsd: globalMap,
+        updatedAtUtc:
+            DateTime.tryParse((decoded['updatedAtUtc'] as String?) ?? ''),
+        sources: sources,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<Map<String, double>?> _fetchGlobalCrossRates() async {
+    try {
+      final resp = await _httpClient
+          .get(Uri.parse(_liveExchangeApiUrl))
+          .timeout(const Duration(seconds: 7));
+      if (resp.statusCode != 200) return null;
+      final decoded = jsonDecode(resp.body) as Map<String, dynamic>;
+      final rates = decoded['rates'];
+      if (rates is! Map<String, dynamic>) return null;
+      return {
+        for (final code in const [
+          'THB',
+          'MYR',
+          'SGD',
+          'KRW',
+          'JPY',
+          'CNY',
+          'EUR',
+          'MMK',
+        ])
+          if (rates[code] is num && (rates[code] as num) > 0)
+            code: (rates[code] as num).toDouble(),
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<double?> _fetchWorldGoldUsd() async {
+    try {
+      final resp = await _httpClient
+          .get(Uri.parse(_liveGoldApiUrl))
+          .timeout(const Duration(seconds: 6));
+      if (resp.statusCode != 200) return null;
+      final decoded = jsonDecode(resp.body) as Map<String, dynamic>;
+      final price = (decoded['price'] as num?)?.toDouble();
+      if (price != null && price > 1500 && price < 10000) return price;
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<_LiveP2pQuote?> _fetchDirectNativeP2pQuote() async {
+    final buys = <double>[];
+    final sells = <double>[];
+    final sources = <String>[];
+
+    // Query Bybit P2P USDT/MMK Buy (side=1) & Sell (side=0)
+    try {
+      var foundBybit = false;
+      for (final side in const ['1', '0']) {
+        final resp = await _httpClient
+            .post(
+              Uri.parse(_bybitP2pUrl),
+              headers: const {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'tokenId': 'USDT',
+                'currencyId': 'MMK',
+                'side': side,
+                'size': '5',
+                'page': '1',
+              }),
+            )
+            .timeout(const Duration(seconds: 6));
+        if (resp.statusCode == 200) {
+          final decoded = jsonDecode(resp.body) as Map<String, dynamic>;
+          final items =
+              ((decoded['result'] as Map<String, dynamic>?)?['items'] as List?) ??
+                  const [];
+          for (final item in items.whereType<Map<String, dynamic>>()) {
+            final p = double.tryParse('${item['price']}');
+            if (p != null && p >= 2500 && p <= 15000) {
+              foundBybit = true;
+              if (side == '1') {
+                buys.add(p);
+              } else {
+                sells.add(p);
+              }
+            }
+          }
+        }
+      }
+      if (foundBybit) sources.add('Bybit P2P Direct');
+    } catch (_) {}
+
+    // Query Bitget P2P USDT/MMK Buy (side=1) & Sell (side=2)
+    try {
+      var foundBitget = false;
+      for (final side in const [1, 2]) {
+        final resp = await _httpClient
+            .post(
+              Uri.parse(_bitgetP2pUrl),
+              headers: const {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'side': side,
+                'pageNo': 1,
+                'pageSize': 5,
+                'coinCode': 'USDT',
+                'fiatCode': 'MMK',
+                'languageType': 0,
+              }),
+            )
+            .timeout(const Duration(seconds: 6));
+        if (resp.statusCode == 200) {
+          final decoded = jsonDecode(resp.body) as Map<String, dynamic>;
+          final items =
+              ((decoded['data'] as Map<String, dynamic>?)?['dataList'] as List?) ??
+                  const [];
+          for (final item in items.whereType<Map<String, dynamic>>()) {
+            final p = double.tryParse('${item['price']}');
+            if (p != null && p >= 2500 && p <= 15000) {
+              foundBitget = true;
+              if (side == 1) {
+                buys.add(p);
+              } else {
+                sells.add(p);
+              }
+            }
+          }
+        }
+      }
+      if (foundBitget) sources.add('Bitget P2P Direct');
+    } catch (_) {}
+
+    if (buys.isEmpty && sells.isEmpty) return null;
+
+    int medianOf(List<double> list) {
+      final sorted = [...list]..sort();
+      final mid = sorted.length ~/ 2;
+      if (sorted.length.isOdd) return sorted[mid].round();
+      return ((sorted[mid - 1] + sorted[mid]) / 2).round();
+    }
+
+    final buyMed = buys.isNotEmpty ? medianOf(buys) : medianOf(sells);
+    final sellMed = sells.isNotEmpty ? medianOf(sells) : medianOf(buys);
+    final midVal = ((buyMed + sellMed) / 2).round();
+
+    return _LiveP2pQuote(
+      buyMmk: buyMed,
+      sellMmk: sellMed,
+      midMmk: midVal,
+      sources: sources,
     );
   }
 
@@ -229,4 +504,42 @@ class MarketPriceService {
       return <String, int>{};
     }
   }
+}
+
+class _MyanmarFxFeed {
+  const _MyanmarFxFeed({
+    required this.usdCashMarketMmk,
+    required this.usdP2pBuyMmk,
+    required this.usdP2pSellMmk,
+    required this.usdP2pMidMmk,
+    required this.usdRemitMmk,
+    required this.worldGoldUsdPerOz,
+    required this.globalRatesPerUsd,
+    required this.updatedAtUtc,
+    required this.sources,
+  });
+
+  final int usdCashMarketMmk;
+  final int usdP2pBuyMmk;
+  final int usdP2pSellMmk;
+  final int usdP2pMidMmk;
+  final int usdRemitMmk;
+  final double? worldGoldUsdPerOz;
+  final Map<String, double> globalRatesPerUsd;
+  final DateTime? updatedAtUtc;
+  final List<String> sources;
+}
+
+class _LiveP2pQuote {
+  const _LiveP2pQuote({
+    required this.buyMmk,
+    required this.sellMmk,
+    required this.midMmk,
+    required this.sources,
+  });
+
+  final int buyMmk;
+  final int sellMmk;
+  final int midMmk;
+  final List<String> sources;
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:myanmar_daily_app/domain/models/commodity_price.dart';
 import 'package:myanmar_daily_app/domain/models/ledger_entry.dart';
 import 'package:myanmar_daily_app/domain/models/loan_rental_item.dart';
 import 'package:myanmar_daily_app/ui/core/theme/app_theme.dart';
@@ -464,13 +465,37 @@ class _CalculatorsSectionState extends State<_CalculatorsSection> {
   static const Map<String, String> _currencyLabelsMm = {
     'USD': 'USD ဒေါ်လာ',
     'THB': 'THB ထိုင်းဘတ်',
-    'SGD': 'SGD စင်ကာပူ',
-    'CNY': 'CNY တရုတ်ယွမ်',
     'MYR': 'MYR မလေးရှား',
+    'SGD': 'SGD စင်ကာပူ',
+    'KRW': 'KRW ကိုရီးယား',
+    'JPY': 'JPY ဂျပန်ယန်း',
+    'CNY': 'CNY တရုတ်ယွမ်',
     'EUR': 'EUR ယူရို',
-    'JPY (100)': 'JPY ဂျပန်ယန်း(100)',
-    'KRW (1000)': 'KRW ကိုရီးယားဝမ်(1000)',
   };
+
+  static const List<int> _quickFxAmounts = [1, 10, 50, 100, 500, 1000];
+
+  String _formatRateText(double rate) {
+    if (rate >= 100 && rate == rate.roundToDouble()) {
+      return rate.round().toString();
+    }
+    if (rate < 10) return rate.toStringAsFixed(2);
+    return rate.toStringAsFixed(1);
+  }
+
+  String _formatCurrencyChipLabel(String code, double ratePerUnit) {
+    final label = _currencyLabelsMm[code] ?? code;
+    if (code == 'KRW') {
+      return '$label (1,000₩ ≈ ${formatMmk((ratePerUnit * 1000).round())})';
+    }
+    if (code == 'JPY') {
+      return '$label (100¥ ≈ ${formatMmk((ratePerUnit * 100).round())})';
+    }
+    if (ratePerUnit >= 200) {
+      return '$label (${formatMmk(ratePerUnit.round())})';
+    }
+    return '$label (${ratePerUnit.toStringAsFixed(1)} ကျပ်)';
+  }
 
   @override
   void initState() {
@@ -485,7 +510,7 @@ class _CalculatorsSectionState extends State<_CalculatorsSection> {
     _downCtrl =
         TextEditingController(text: (phonePrice * 0.25).round().toString());
     _fxRateCtrl = TextEditingController(
-      text: vm.activeCurrencyRateMmk.toString(),
+      text: _formatRateText(vm.activeCurrencyRateMmk),
     );
     _lastAppliedSyncTime = vm.marketSnapshot.lastSyncedAt;
   }
@@ -494,7 +519,7 @@ class _CalculatorsSectionState extends State<_CalculatorsSection> {
     if (_lastAppliedSyncTime == vm.marketSnapshot.lastSyncedAt) return;
     _lastAppliedSyncTime = vm.marketSnapshot.lastSyncedAt;
     _goldPriceCtrl.text = vm.activeGoldPricePerKyatMmk.toString();
-    _fxRateCtrl.text = vm.activeCurrencyRateMmk.toString();
+    _fxRateCtrl.text = _formatRateText(vm.activeCurrencyRateMmk);
     final phonePrice =
         ((280 * vm.marketSnapshot.usdMarketMmk) / 10000).round() * 10000;
     _principalCtrl.text = phonePrice.toString();
@@ -503,28 +528,34 @@ class _CalculatorsSectionState extends State<_CalculatorsSection> {
 
   void _triggerGoldCalculation(FinanceCalcViewModel vm) {
     vm.computeGold(
-      kyat: int.tryParse(_kyatCtrl.text.trim()) ?? 0,
-      pae: int.tryParse(_paeCtrl.text.trim()) ?? 0,
-      yway: double.tryParse(_ywayCtrl.text.trim()) ?? 0,
-      pricePerKyat: double.tryParse(_goldPriceCtrl.text.trim()) ?? 0,
-      wastagePae: double.tryParse(_wastagePaeCtrl.text.trim()) ?? 0,
-      makingFeeMmk: double.tryParse(_makingFeeCtrl.text.trim()) ?? 0,
+      kyat: int.tryParse(normalizeAsciiDigits(_kyatCtrl.text)) ?? 0,
+      pae: int.tryParse(normalizeAsciiDigits(_paeCtrl.text)) ?? 0,
+      yway: double.tryParse(normalizeAsciiDigits(_ywayCtrl.text)) ?? 0,
+      pricePerKyat:
+          double.tryParse(normalizeAsciiDigits(_goldPriceCtrl.text)) ?? 0,
+      wastagePae:
+          double.tryParse(normalizeAsciiDigits(_wastagePaeCtrl.text)) ?? 0,
+      makingFeeMmk:
+          double.tryParse(normalizeAsciiDigits(_makingFeeCtrl.text)) ?? 0,
     );
   }
 
   void _triggerInstallmentCalculation(FinanceCalcViewModel vm) {
     vm.computeInstallment(
-      principal: double.tryParse(_principalCtrl.text.trim()) ?? 0,
-      downPayment: double.tryParse(_downCtrl.text.trim()) ?? 0,
-      monthlyFlatInterestPercent: double.tryParse(_rateCtrl.text.trim()) ?? 0,
-      months: int.tryParse(_monthsCtrl.text.trim()) ?? 1,
+      principal:
+          double.tryParse(normalizeAsciiDigits(_principalCtrl.text)) ?? 0,
+      downPayment: double.tryParse(normalizeAsciiDigits(_downCtrl.text)) ?? 0,
+      monthlyFlatInterestPercent:
+          double.tryParse(normalizeAsciiDigits(_rateCtrl.text)) ?? 0,
+      months: int.tryParse(normalizeAsciiDigits(_monthsCtrl.text)) ?? 1,
     );
   }
 
   void _triggerCurrencyCalculation(FinanceCalcViewModel vm) {
     vm.computeCurrency(
-      amount: double.tryParse(_fxAmountCtrl.text.trim()) ?? 0,
-      rateMmkPerUnit: double.tryParse(_fxRateCtrl.text.trim()) ?? 0,
+      amount: double.tryParse(normalizeAsciiDigits(_fxAmountCtrl.text)) ?? 0,
+      rateMmkPerUnit:
+          double.tryParse(normalizeAsciiDigits(_fxRateCtrl.text)) ?? 0,
       toMmk: _toMmk,
     );
   }
@@ -543,7 +574,13 @@ class _CalculatorsSectionState extends State<_CalculatorsSection> {
         title: const Text('ရွှေဈေးနှင့် ဒေါ်လာပေါက်ဈေး ချိန်ညှိရန်'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            Text(
+              'Live ပြင်ပပေါက်ဈေး: ${formatMmk(vm.marketSnapshot.usdCashMarketMmk)} • USDT P2P: ${formatMmk(vm.marketSnapshot.usdP2pMidMmk)}',
+              style: const TextStyle(fontSize: 12, color: AppTheme.neonLime500),
+            ),
+            const SizedBox(height: 10),
             TextField(
               controller: usdCtrl,
               keyboardType: TextInputType.number,
@@ -562,14 +599,23 @@ class _CalculatorsSectionState extends State<_CalculatorsSection> {
           ],
         ),
         actions: [
+          if (vm.marketSnapshot.activeRateTier == MarketRateTier.custom)
+            TextButton(
+              onPressed: () async {
+                await vm.resetToLiveMarketRate();
+                if (context.mounted) Navigator.of(context).pop();
+              },
+              child: const Text('Live ပြန်ချိတ်မည်'),
+            ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
             child: const Text('မလုပ်တော့'),
           ),
           FilledButton(
             onPressed: () async {
-              final nextUsd = int.tryParse(usdCtrl.text.trim());
-              final nextGold = int.tryParse(goldCtrl.text.trim());
+              final nextUsd = int.tryParse(normalizeAsciiDigits(usdCtrl.text));
+              final nextGold =
+                  int.tryParse(normalizeAsciiDigits(goldCtrl.text));
               if (nextUsd != null &&
                   nextUsd > 500 &&
                   nextUsd != vm.marketSnapshot.usdMarketMmk) {
@@ -749,7 +795,11 @@ class _CalculatorsSectionState extends State<_CalculatorsSection> {
                           backgroundColor: const Color(0xFF1F2812),
                           side: const BorderSide(color: AppTheme.olive800),
                           label: Text(
-                            '1 ${e.key}: ${formatMmk(e.value.round())}',
+                            e.key == 'KRW'
+                                ? '1,000 KRW: ${formatMmk((e.value * 1000).round())}'
+                                : e.key == 'JPY'
+                                    ? '100 JPY: ${formatMmk((e.value * 100).round())}'
+                                    : '1 ${e.key}: ${formatMmk(e.value.round())}',
                             style: const TextStyle(
                               fontSize: 11.5,
                               fontWeight: FontWeight.w700,
@@ -758,7 +808,7 @@ class _CalculatorsSectionState extends State<_CalculatorsSection> {
                           ),
                           onPressed: () {
                             vm.setSelectedCurrencyCode(e.key);
-                            _fxRateCtrl.text = e.value.toString();
+                            _fxRateCtrl.text = _formatRateText(e.value);
                             _triggerCurrencyCalculation(vm);
                           },
                         ),
@@ -1136,7 +1186,7 @@ class _CalculatorsSectionState extends State<_CalculatorsSection> {
         ),
         const SizedBox(height: 12),
 
-        // 3. Live Online Multi-Currency Converter
+        // 3. Live Online Active Multi-Currency Converter
         Card(
           color: const Color(0xFF16181C),
           shape: RoundedRectangleBorder(
@@ -1148,29 +1198,175 @@ class _CalculatorsSectionState extends State<_CalculatorsSection> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  'နိုင်ငံခြားငွေလဲနှုန်း တွက်စက် (Online Live FX)',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: AppTheme.neonLime600,
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'နိုင်ငံခြားငွေလဲနှုန်း တွက်စက် (Online Live FX)',
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              color: AppTheme.neonLime600,
+                            ),
                       ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: snap.isOnlineLive
+                            ? const Color(0xFF183016)
+                            : const Color(0xFF2B2410),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: snap.isOnlineLive
+                              ? AppTheme.neonLime500
+                              : const Color(0xFFFACC15),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 7,
+                            height: 7,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: snap.isOnlineLive
+                                  ? const Color(0xFF4ADE80)
+                                  : const Color(0xFFFACC15),
+                            ),
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            snap.isOnlineLive
+                                ? 'LIVE ${formatTimeShort((snap.feedUpdatedAtUtc ?? snap.lastSyncedAt).toLocal())}'
+                                : 'OFFLINE',
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w800,
+                              color: snap.isOnlineLive
+                                  ? const Color(0xFF4ADE80)
+                                  : const Color(0xFFFACC15),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      tooltip: 'တိုက်ရိုက်ပေါက်ဈေး အသစ်ဆွဲမည်',
+                      onPressed: vm.isSyncingOnline ? null : vm.syncOnlineRates,
+                      icon: vm.isSyncingOnline
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(
+                              Icons.sync_rounded,
+                              size: 20,
+                              color: AppTheme.neonLime500,
+                            ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
+                // Live Market Tier Selector (Cash Market / USDT P2P / Bank Remit / Custom)
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: ChoiceChip(
+                          visualDensity: VisualDensity.compact,
+                          label: Text(
+                            'ပြင်ပပေါက်ဈေး (${formatMmk(snap.usdCashMarketMmk)})',
+                            style: const TextStyle(fontSize: 11.5),
+                          ),
+                          selected:
+                              snap.activeRateTier == MarketRateTier.cashMarket,
+                          onSelected: (_) =>
+                              vm.setMarketRateTier(MarketRateTier.cashMarket),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: ChoiceChip(
+                          visualDensity: VisualDensity.compact,
+                          label: Text(
+                            'USDT P2P (${formatMmk(snap.usdP2pMidMmk)})',
+                            style: const TextStyle(fontSize: 11.5),
+                          ),
+                          selected:
+                              snap.activeRateTier == MarketRateTier.usdtP2p,
+                          onSelected: (_) =>
+                              vm.setMarketRateTier(MarketRateTier.usdtP2p),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: ChoiceChip(
+                          visualDensity: VisualDensity.compact,
+                          label: Text(
+                            'ဘဏ်/ငွေလွှဲ (${formatMmk(snap.usdRemitMmk)})',
+                            style: const TextStyle(fontSize: 11.5),
+                          ),
+                          selected:
+                              snap.activeRateTier == MarketRateTier.bankRemit,
+                          onSelected: (_) =>
+                              vm.setMarketRateTier(MarketRateTier.bankRemit),
+                        ),
+                      ),
+                      ActionChip(
+                        visualDensity: VisualDensity.compact,
+                        avatar: const Icon(Icons.tune_rounded, size: 15),
+                        label: Text(
+                          snap.activeRateTier == MarketRateTier.custom
+                              ? 'မိမိနှုန်း (${formatMmk(snap.usdMarketMmk)})'
+                              : 'နှုန်းချိန်ရန်',
+                          style: const TextStyle(fontSize: 11.5),
+                        ),
+                        onPressed: () => _showEditMarketRatesDialog(vm),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF111510),
+                    borderRadius: BorderRadius.circular(11),
+                    border: Border.all(color: const Color(0xFF283420)),
+                  ),
+                  child: Text(
+                    'KBZPay/P2P တိုက်ရိုက်: ဝယ် ${formatMmk(snap.usdP2pSellMmk)} • ရောင်း ${formatMmk(snap.usdP2pBuyMmk)}  |  ပြင်ပခန့်မှန်း 1 USD = ${formatMmk(snap.usdCashMarketMmk)}',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      height: 1.35,
+                      color: AppTheme.gray200,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: snap.foreignRatesMmk.entries.map((entry) {
-                      final label = _currencyLabelsMm[entry.key] ?? entry.key;
                       return Padding(
                         padding: const EdgeInsets.only(right: 8),
                         child: ChoiceChip(
                           label: Text(
-                            '$label (${formatMmk(entry.value.round())})',
+                            _formatCurrencyChipLabel(entry.key, entry.value),
                           ),
                           selected: vm.selectedCurrencyCode == entry.key,
                           onSelected: (_) {
                             vm.setSelectedCurrencyCode(entry.key);
-                            _fxRateCtrl.text = entry.value.toString();
+                            _fxRateCtrl.text = _formatRateText(entry.value);
                             _triggerCurrencyCalculation(vm);
                           },
                         ),
@@ -1187,6 +1383,7 @@ class _CalculatorsSectionState extends State<_CalculatorsSection> {
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
+                        onChanged: (_) => _triggerCurrencyCalculation(vm),
                         decoration: InputDecoration(
                           labelText: _toMmk
                               ? 'ပမာဏ (${vm.selectedCurrencyCode})'
@@ -1201,6 +1398,7 @@ class _CalculatorsSectionState extends State<_CalculatorsSection> {
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
+                        onChanged: (_) => _triggerCurrencyCalculation(vm),
                         decoration: InputDecoration(
                           labelText:
                               '1 ${vm.selectedCurrencyCode} ပေါက်ဈေး (ကျပ်)',
@@ -1208,6 +1406,38 @@ class _CalculatorsSectionState extends State<_CalculatorsSection> {
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: 8),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: _quickFxAmounts.map((amt) {
+                      final label = _toMmk
+                          ? '$amt ${vm.selectedCurrencyCode}'
+                          : '${amt * 1000} ကျပ်';
+                      final rawVal = _toMmk ? amt : amt * 1000;
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: ActionChip(
+                          visualDensity: VisualDensity.compact,
+                          backgroundColor: const Color(0xFF1D221B),
+                          side: const BorderSide(color: Color(0xFF334124)),
+                          label: Text(
+                            label,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.neonLime500,
+                            ),
+                          ),
+                          onPressed: () {
+                            _fxAmountCtrl.text = rawVal.toString();
+                            _triggerCurrencyCalculation(vm);
+                          },
+                        ),
+                      );
+                    }).toList(),
+                  ),
                 ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
@@ -1236,15 +1466,28 @@ class _CalculatorsSectionState extends State<_CalculatorsSection> {
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(color: AppTheme.neonLime600),
                     ),
-                    child: Text(
-                      _toMmk
-                          ? 'ကျသင့်ငွေ: ${formatMmk(vm.currencyConverted.round())}'
-                          : 'ရရှိမည့်ပမာဏ: ${vm.currencyConverted.toStringAsFixed(2)} ${vm.selectedCurrencyCode}',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 15,
-                        color: AppTheme.neonLime600,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _toMmk
+                              ? 'ကျသင့်ငွေ: ${formatMmk(vm.currencyConverted.round())}'
+                              : 'ရရှိမည့်ပမာဏ: ${vm.currencyConverted.toStringAsFixed(2)} ${vm.selectedCurrencyCode}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
+                            color: AppTheme.neonLime600,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          '1 ${vm.selectedCurrencyCode} = ${_fxRateCtrl.text} ကျပ် (${snap.activeRateTier.labelMm})',
+                          style: const TextStyle(
+                            fontSize: 11.5,
+                            color: AppTheme.gray300,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],

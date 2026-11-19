@@ -31,8 +31,8 @@ class FinanceCalcViewModel extends ChangeNotifier {
   bool get isSyncingOnline => _isSyncingOnline;
 
   MarketPriceSnapshot _marketSnapshot = MarketPriceSnapshot(
-    usdMarketMmk: 4500,
-    thbMarketMmk: 133,
+    usdMarketMmk: 4650,
+    thbMarketMmk: 137,
     commodities: MarketPriceSnapshot.defaultCommodities(),
     lastSyncedAt: DateTime.now(),
     isOnlineLive: false,
@@ -45,6 +45,9 @@ class FinanceCalcViewModel extends ChangeNotifier {
 
   String _selectedCurrencyCode = 'USD';
   String get selectedCurrencyCode => _selectedCurrencyCode;
+
+  double _lastFxAmount = 100;
+  bool _lastFxToMmk = true;
 
   List<LedgerEntry> _ledgerEntries = const [];
   List<LedgerEntry> get ledgerEntries => _ledgerEntries;
@@ -129,6 +132,30 @@ class FinanceCalcViewModel extends ChangeNotifier {
     }
   }
 
+  Future<void> setMarketRateTier(MarketRateTier tier) async {
+    _isSyncingOnline = true;
+    notifyListeners();
+    try {
+      _marketSnapshot = await _marketPriceService.setMarketRateTier(tier);
+      _recomputeDefaultsFromSnapshot();
+    } finally {
+      _isSyncingOnline = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> resetToLiveMarketRate() async {
+    _isSyncingOnline = true;
+    notifyListeners();
+    try {
+      _marketSnapshot = await _marketPriceService.resetToLiveMarketRate();
+      _recomputeDefaultsFromSnapshot();
+    } finally {
+      _isSyncingOnline = false;
+      notifyListeners();
+    }
+  }
+
   Future<void> updateUsdMarketRate(int newUsdMmk) async {
     _isSyncingOnline = true;
     notifyListeners();
@@ -172,9 +199,9 @@ class FinanceCalcViewModel extends ChangeNotifier {
       months: 6,
     );
     _currencyConverted = MyanmarCalculators.convertCurrency(
-      amount: 100,
+      amount: _lastFxAmount,
       rateMmkPerUnit: activeCurrencyRateMmk,
-      toMmk: true,
+      toMmk: _lastFxToMmk,
     );
   }
 
@@ -244,6 +271,8 @@ class FinanceCalcViewModel extends ChangeNotifier {
     required double rateMmkPerUnit,
     required bool toMmk,
   }) {
+    _lastFxAmount = amount;
+    _lastFxToMmk = toMmk;
     _currencyConverted = MyanmarCalculators.convertCurrency(
       amount: amount,
       rateMmkPerUnit: rateMmkPerUnit,

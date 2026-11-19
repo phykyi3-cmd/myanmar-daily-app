@@ -30,23 +30,49 @@ class CommodityPrice {
       };
 }
 
+/// Active Myanmar USD/MMK live pricing tier selectable by the user.
+enum MarketRateTier {
+  cashMarket(labelMm: 'ပြင်ပပေါက်ဈေး Live'),
+  usdtP2p(labelMm: 'USDT P2P Live'),
+  bankRemit(labelMm: 'ဘဏ်/ငွေလွှဲ Live'),
+  custom(labelMm: 'မိမိပေါက်ဈေး');
+
+  const MarketRateTier({required this.labelMm});
+  final String labelMm;
+
+  static MarketRateTier fromName(String? value) {
+    return MarketRateTier.values.firstWhere(
+      (t) => t.name == value,
+      orElse: () => MarketRateTier.cashMarket,
+    );
+  }
+}
+
 /// Snapshot of online-synced Myanmar currency, gold (XAU & 16/15 Pae Yae), and commodity unit prices.
 class MarketPriceSnapshot {
   const MarketPriceSnapshot({
     required this.usdMarketMmk,
     required this.thbMarketMmk,
-    this.worldGoldUsdPerOz = 3885.0,
-    this.myanmarGold16PaeMmk = 6850000,
-    this.myanmarGold15PaeMmk = 6420000,
+    this.worldGoldUsdPerOz = 3732.0,
+    this.myanmarGold16PaeMmk = 9255000,
+    this.myanmarGold15PaeMmk = 8675000,
+    this.usdCashMarketMmk = 4650,
+    this.usdP2pBuyMmk = 5129,
+    this.usdP2pSellMmk = 5066,
+    this.usdP2pMidMmk = 5098,
+    this.usdRemitMmk = 3874,
+    this.activeRateTier = MarketRateTier.cashMarket,
+    this.feedUpdatedAtUtc,
+    this.liveSources = const [],
     this.foreignRatesMmk = const {
-      'USD': 4500,
-      'THB': 133,
-      'SGD': 3490,
-      'CNY': 670,
-      'MYR': 1100,
-      'EUR': 4950,
-      'JPY (100)': 2820,
-      'KRW (1000)': 3360,
+      'USD': 4650,
+      'THB': 136.9,
+      'MYR': 1130.1,
+      'SGD': 3606,
+      'KRW': 3.49,
+      'JPY': 29.2,
+      'CNY': 696.0,
+      'EUR': 5103,
     },
     required this.commodities,
     required this.lastSyncedAt,
@@ -59,6 +85,14 @@ class MarketPriceSnapshot {
   final double worldGoldUsdPerOz;
   final int myanmarGold16PaeMmk;
   final int myanmarGold15PaeMmk;
+  final int usdCashMarketMmk;
+  final int usdP2pBuyMmk;
+  final int usdP2pSellMmk;
+  final int usdP2pMidMmk;
+  final int usdRemitMmk;
+  final MarketRateTier activeRateTier;
+  final DateTime? feedUpdatedAtUtc;
+  final List<String> liveSources;
   final Map<String, double> foreignRatesMmk;
   final Map<String, CommodityPrice> commodities;
   final DateTime lastSyncedAt;
