@@ -14,6 +14,7 @@ import 'package:myanmar_daily_app/data/services/preferences_service.dart';
 import 'package:myanmar_daily_app/domain/models/commodity_price.dart';
 import 'package:myanmar_daily_app/domain/models/recipe.dart';
 import 'package:myanmar_daily_app/domain/models/regional_market.dart';
+import 'package:myanmar_daily_app/ui/core/utils/formatters.dart';
 import 'package:myanmar_daily_app/ui/features/daily_market/view_models/daily_market_view_model.dart';
 import 'package:myanmar_daily_app/ui/features/daily_market/views/daily_market_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -273,6 +274,8 @@ void main() {
     expect(SupportedMarketCountry.sg.formatAmount(sgTotal), startsWith('S\$ '));
     expect(SupportedMarketCountry.kr.formatAmount(krTotal), contains('₩'));
     expect(SupportedMarketCountry.jp.formatAmount(jpTotal), contains('¥'));
+    expect(normalizeAsciiDigits(' ၁၇.၅၀, '), '17.50');
+    expect(normalizeAsciiDigits('၇,၉၀၀'), '7900');
   });
 
   testWidgets('DailyMarketScreen auto-detects IP country and switches currencies cleanly', (tester) async {

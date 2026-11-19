@@ -493,8 +493,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Starts directly on 'အိမ်တွင်းရေး' (no separate 'ပင်မ' destination in nav bar).
+      // Starts directly on 'အိမ်တွင်းရေး' with strictly 4 nav tabs (no 'ပင်မ' or 'မိခင်/ကလေး').
+      expect(find.byType(NavigationDestination), findsNWidgets(4));
       expect(find.text('ပင်မ'), findsNothing);
+      expect(find.text('မိခင်/ကလေး'), findsNothing);
       expect(find.text('သတိပေး/QR'), findsNothing);
       expect(find.text('အိမ်တွင်းရေး'), findsWidgets);
       expect(find.text('ဗေဒင်/ယတြာ'), findsOneWidget);

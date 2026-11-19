@@ -5,7 +5,6 @@ import 'package:provider/provider.dart';
 import '../../features/baydin/view_models/baydin_view_model.dart';
 import '../../features/finance_calc/view_models/finance_calc_view_model.dart';
 import '../../features/home/view_models/home_view_model.dart';
-import '../../features/maternal_child/view_models/maternal_child_view_model.dart';
 import '../../features/reminders_qr/view_models/reminders_qr_view_model.dart';
 
 /// Persistent NBK Dark + Neon Lime navigation shell centered on household daily needs.
@@ -21,10 +20,8 @@ class ScaffoldWithNavBar extends StatelessWidget {
     if (index == 1) {
       context.read<BaydinViewModel>().loadAll();
     } else if (index == 2) {
-      context.read<MaternalChildViewModel>().loadAll();
-    } else if (index == 3) {
       context.read<FinanceCalcViewModel>().loadAll();
-    } else if (index == 4) {
+    } else if (index == 3) {
       context.read<RemindersQrViewModel>().loadAll();
       context.read<HomeViewModel>().loadDashboard();
     }
@@ -58,11 +55,6 @@ class ScaffoldWithNavBar extends StatelessWidget {
               icon: Icon(Icons.auto_awesome_outlined),
               selectedIcon: Icon(Icons.auto_awesome_rounded),
               label: 'ဗေဒင်/ယတြာ',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.child_care_outlined),
-              selectedIcon: Icon(Icons.child_care_rounded),
-              label: 'မိခင်/ကလေး',
             ),
             NavigationDestination(
               icon: Icon(Icons.calculate_outlined),

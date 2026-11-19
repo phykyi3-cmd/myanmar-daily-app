@@ -8,19 +8,16 @@ import '../ui/features/daily_market/views/daily_market_screen.dart';
 import '../ui/features/finance_calc/view_models/finance_calc_view_model.dart';
 import '../ui/features/finance_calc/views/finance_calc_screen.dart';
 import '../ui/features/home/view_models/home_view_model.dart';
-import '../ui/features/maternal_child/view_models/maternal_child_view_model.dart';
-import '../ui/features/maternal_child/views/maternal_child_screen.dart';
 import '../ui/features/reminders_qr/view_models/reminders_qr_view_model.dart';
 import '../ui/features/reminders_qr/views/reminders_qr_screen.dart';
 
-/// Builds the household-first 5-branch persistent bottom navigation GoRouter configuration.
+/// Builds the household-first 4-branch persistent bottom navigation GoRouter configuration.
 GoRouter createAppRouter({
   required HomeViewModel homeViewModel,
   required FinanceCalcViewModel financeCalcViewModel,
   required DailyMarketViewModel dailyMarketViewModel,
   required RemindersQrViewModel remindersQrViewModel,
   required BaydinViewModel baydinViewModel,
-  required MaternalChildViewModel maternalChildViewModel,
 }) {
   return GoRouter(
     initialLocation: '/daily',
@@ -49,15 +46,6 @@ GoRouter createAppRouter({
                 path: '/baydin',
                 builder: (context, state) =>
                     BaydinScreen(viewModel: baydinViewModel),
-              ),
-            ],
-          ),
-          StatefulShellBranch(
-            routes: [
-              GoRoute(
-                path: '/maternal',
-                builder: (context, state) =>
-                    MaternalChildScreen(viewModel: maternalChildViewModel),
               ),
             ],
           ),

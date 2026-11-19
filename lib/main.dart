@@ -5,7 +5,6 @@ import 'package:provider/provider.dart';
 import 'data/repositories/backup_repository.dart';
 import 'data/repositories/daily_market_repository.dart';
 import 'data/repositories/finance_repository.dart';
-import 'data/repositories/maternal_child_repository.dart';
 import 'data/repositories/reminder_repository.dart';
 import 'data/repositories/settings_qr_repository.dart';
 import 'data/services/asset_data_service.dart';
@@ -19,7 +18,6 @@ import 'ui/features/baydin/view_models/baydin_view_model.dart';
 import 'ui/features/daily_market/view_models/daily_market_view_model.dart';
 import 'ui/features/finance_calc/view_models/finance_calc_view_model.dart';
 import 'ui/features/home/view_models/home_view_model.dart';
-import 'ui/features/maternal_child/view_models/maternal_child_view_model.dart';
 import 'ui/features/reminders_qr/view_models/reminders_qr_view_model.dart';
 
 void main() {
@@ -40,10 +38,6 @@ void main() {
   final reminderRepository = ReminderRepository(dbService: dbService);
   final settingsQrRepository =
       SettingsQrRepository(preferencesService: preferencesService);
-  final maternalChildRepository = MaternalChildRepository(
-    dbService: dbService,
-    preferencesService: preferencesService,
-  );
   final backupRepository = BackupRepository(
     dbService: dbService,
     backupService: backupService,
@@ -51,7 +45,6 @@ void main() {
     dailyMarketRepository: dailyMarketRepository,
     reminderRepository: reminderRepository,
     settingsQrRepository: settingsQrRepository,
-    maternalChildRepository: maternalChildRepository,
   );
 
   runApp(
@@ -74,8 +67,6 @@ void main() {
         settingsQrRepository: settingsQrRepository,
       ),
       baydinViewModel: BaydinViewModel(),
-      maternalChildViewModel:
-          MaternalChildViewModel(repository: maternalChildRepository),
     ),
   );
 }
@@ -89,7 +80,6 @@ class MyanmarDailyApp extends StatefulWidget {
     required this.dailyMarketViewModel,
     required this.remindersQrViewModel,
     this.baydinViewModel,
-    this.maternalChildViewModel,
   });
 
   final HomeViewModel homeViewModel;
@@ -97,7 +87,6 @@ class MyanmarDailyApp extends StatefulWidget {
   final DailyMarketViewModel dailyMarketViewModel;
   final RemindersQrViewModel remindersQrViewModel;
   final BaydinViewModel? baydinViewModel;
-  final MaternalChildViewModel? maternalChildViewModel;
 
   @override
   State<MyanmarDailyApp> createState() => _MyanmarDailyAppState();
@@ -106,14 +95,6 @@ class MyanmarDailyApp extends StatefulWidget {
 class _MyanmarDailyAppState extends State<MyanmarDailyApp> {
   late final BaydinViewModel _baydinViewModel =
       widget.baydinViewModel ?? BaydinViewModel();
-  late final MaternalChildViewModel _maternalChildViewModel =
-      widget.maternalChildViewModel ??
-          MaternalChildViewModel(
-            repository: MaternalChildRepository(
-              dbService: LocalDbService(),
-              preferencesService: PreferencesService(),
-            ),
-          );
 
   late final GoRouter _router = createAppRouter(
     homeViewModel: widget.homeViewModel,
@@ -121,7 +102,6 @@ class _MyanmarDailyAppState extends State<MyanmarDailyApp> {
     dailyMarketViewModel: widget.dailyMarketViewModel,
     remindersQrViewModel: widget.remindersQrViewModel,
     baydinViewModel: _baydinViewModel,
-    maternalChildViewModel: _maternalChildViewModel,
   );
 
   @override
@@ -133,7 +113,6 @@ class _MyanmarDailyAppState extends State<MyanmarDailyApp> {
         ChangeNotifierProvider.value(value: widget.dailyMarketViewModel),
         ChangeNotifierProvider.value(value: widget.remindersQrViewModel),
         ChangeNotifierProvider.value(value: _baydinViewModel),
-        ChangeNotifierProvider.value(value: _maternalChildViewModel),
       ],
       child: MaterialApp.router(
         title: 'မြန်မာနေ့စဉ်',

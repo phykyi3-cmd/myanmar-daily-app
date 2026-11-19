@@ -1,5 +1,19 @@
-export '../../../domain/models/maternal_child_models.dart'
-    show normalizeAsciiDigits;
+/// Converts Myanmar numerals (`၀–၉`), commas, and whitespace into plain ASCII digits
+/// so numeric inputs work identically on Burmese and English keyboards.
+String normalizeAsciiDigits(String input) {
+  const mmZero = 0x1040;
+  final buf = StringBuffer();
+  for (final code in input.trim().codeUnits) {
+    if (code >= mmZero && code <= mmZero + 9) {
+      buf.writeCharCode(0x30 + (code - mmZero));
+    } else if (code == 0x2C /* , */ || code == 0x20 /* space */) {
+      continue;
+    } else {
+      buf.writeCharCode(code);
+    }
+  }
+  return buf.toString();
+}
 
 /// Lightweight formatting helpers without external locale dependencies.
 String formatMmk(int amount) {

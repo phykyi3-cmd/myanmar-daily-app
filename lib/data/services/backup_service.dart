@@ -4,7 +4,6 @@ import '../../domain/models/daily_purchase_record.dart';
 import '../../domain/models/emergency_qr_card.dart';
 import '../../domain/models/ledger_entry.dart';
 import '../../domain/models/loan_rental_item.dart';
-import '../../domain/models/maternal_child_models.dart';
 import '../../domain/models/renewal_reminder.dart';
 import '../../domain/models/shopping_item.dart';
 
@@ -19,9 +18,6 @@ class BackupSnapshot {
     this.purchaseRecords = const [],
     required this.reminders,
     required this.qrCard,
-    this.healthProfiles = const [],
-    this.immunizationRecords = const [],
-    this.growthLogs = const [],
   });
 
   final int version;
@@ -32,9 +28,6 @@ class BackupSnapshot {
   final List<DailyPurchaseRecord> purchaseRecords;
   final List<RenewalReminder> reminders;
   final EmergencyQrCard qrCard;
-  final List<FamilyHealthProfile> healthProfiles;
-  final List<ImmunizationRecord> immunizationRecords;
-  final List<HealthGrowthLog> growthLogs;
 }
 
 /// Serializes and parses full offline JSON backups for user-owned storage.
@@ -52,10 +45,6 @@ class BackupService {
           snapshot.purchaseRecords.map((e) => e.toMap()).toList(),
       'reminders': snapshot.reminders.map((e) => e.toMap()).toList(),
       'qrCard': snapshot.qrCard.toJson(),
-      'healthProfiles': snapshot.healthProfiles.map((e) => e.toMap()).toList(),
-      'immunizationRecords':
-          snapshot.immunizationRecords.map((e) => e.toMap()).toList(),
-      'growthLogs': snapshot.growthLogs.map((e) => e.toMap()).toList(),
     };
     return const JsonEncoder.withIndent('  ').convert(payload);
   }
@@ -93,11 +82,6 @@ class BackupService {
       purchaseRecords: parseList('purchaseRecords', DailyPurchaseRecord.fromMap),
       reminders: parseList('reminders', RenewalReminder.fromMap),
       qrCard: qrCard,
-      healthProfiles:
-          parseList('healthProfiles', FamilyHealthProfile.fromMap),
-      immunizationRecords:
-          parseList('immunizationRecords', ImmunizationRecord.fromMap),
-      growthLogs: parseList('growthLogs', HealthGrowthLog.fromMap),
     );
   }
 }

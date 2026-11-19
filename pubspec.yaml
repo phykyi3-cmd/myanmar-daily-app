@@ -28,6 +28,5 @@ flutter:
   uses-material-design: true
   assets:
     - assets/data/recipes_mm.json
-    - assets/data/maternal_child_ref.json
     - assets/images/dishes/
     - assets/images/baydin/

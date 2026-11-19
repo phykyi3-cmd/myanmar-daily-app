@@ -16,9 +16,6 @@ class LocalDbService {
   static const String tableShopping = 'shopping_items';
   static const String tablePurchaseRecords = 'purchase_records';
   static const String tableReminders = 'reminders';
-  static const String tableMaternalChildProfiles = 'maternal_child_profiles';
-  static const String tableImmunizationRecords = 'immunization_records';
-  static const String tableHealthGrowthLogs = 'health_growth_logs';
 
   Database? _db;
 
@@ -97,53 +94,6 @@ class LocalDbService {
         is_completed INTEGER NOT NULL
       )
     ''');
-
-    await _createHealthTables(db);
-  }
-
-  Future<void> _createHealthTables(Database db) async {
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS $tableMaternalChildProfiles (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        profile_type TEXT NOT NULL,
-        child_gender TEXT NOT NULL,
-        reference_date TEXT NOT NULL,
-        blood_type TEXT NOT NULL DEFAULT '',
-        allergy_note TEXT NOT NULL DEFAULT '',
-        created_at TEXT NOT NULL
-      )
-    ''');
-
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS $tableImmunizationRecords (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        profile_id INTEGER NOT NULL,
-        vaccine_code TEXT NOT NULL,
-        vaccine_name_mm TEXT NOT NULL,
-        dose_label_mm TEXT NOT NULL,
-        protect_against_mm TEXT NOT NULL,
-        due_age_days INTEGER NOT NULL,
-        due_date TEXT NOT NULL,
-        completed_date TEXT,
-        is_completed INTEGER NOT NULL DEFAULT 0,
-        clinic_note TEXT NOT NULL DEFAULT ''
-      )
-    ''');
-
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS $tableHealthGrowthLogs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        profile_id INTEGER NOT NULL,
-        recorded_at TEXT NOT NULL,
-        weight_kg REAL,
-        height_cm REAL,
-        bp_systolic INTEGER,
-        bp_diastolic INTEGER,
-        mood_score INTEGER NOT NULL DEFAULT 3,
-        symptoms_note TEXT NOT NULL DEFAULT ''
-      )
-    ''');
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -167,9 +117,7 @@ class LocalDbService {
         )
       ''');
     }
-    if (oldVersion < 3) {
-      await _createHealthTables(db);
-    }
+    // Keep _dbVersion = 3 for forward compatibility with existing Android installs.
   }
 
   Future<List<Map<String, Object?>>> _readWebTable(String table) async {
@@ -207,9 +155,6 @@ class LocalDbService {
       } else if (orderBy != null && orderBy.contains('due_date ASC')) {
         rows.sort((a, b) =>
             '${a['due_date'] ?? ''}'.compareTo('${b['due_date'] ?? ''}'));
-      } else if (orderBy != null && orderBy.contains('recorded_at DESC')) {
-        rows.sort((a, b) =>
-            '${b['recorded_at'] ?? ''}'.compareTo('${a['recorded_at'] ?? ''}'));
       }
       return rows;
     }
@@ -283,8 +228,6 @@ class LocalDbService {
         rows.removeWhere((row) => row['is_checked'] == whereArgs.first);
       } else if (where == 'date_key = ?' && whereArgs.isNotEmpty) {
         rows.removeWhere((row) => row['date_key'] == whereArgs.first);
-      } else if (where == 'profile_id = ?' && whereArgs.isNotEmpty) {
-        rows.removeWhere((row) => row['profile_id'] == whereArgs.first);
       }
       await _writeWebTable(table, rows);
       return;

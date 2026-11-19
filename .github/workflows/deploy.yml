@@ -134,6 +134,6 @@ jobs:
           prerelease: false
           make_latest: true
           body: |
-            မြန်မာနေ့စဉ် (Myanmar Daily App) Offline-First + Maternal & Child Care + Phase 2 Telehealth Ready Android Release APK ဖြစ်ပါသည်။
-            - Installable Web PWA: https://phykyi3-cmd.github.io/myanmar-daily-app/
+            မြန်မာနေ့စဉ် (Myanmar Daily App) Offline-First + 6-Country Regional Recipe Cost Calculator Android Release APK ဖြစ်ပါသည်။
+            - Installable Web PWA: https://smartmyanmarfonts.com/myanmar-daily-app/
           files: build/myanmar-daily-app-universal.apk
