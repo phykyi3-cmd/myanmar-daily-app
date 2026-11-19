@@ -10,7 +10,9 @@ Offline-First Flutter Application for Myanmar families at home and abroad — pa
 1. **`အိမ်တွင်းရေး` (Household Meals, Regional Market & Shopping):**
    - 82 Myanmar & ethnic dishes (`assets/images/dishes/`) with one-tap ingredient sync to Shopping List & dated Purchase History.
    - Automatic IP geolocation & local currency recipe cost estimation strictly for **6 countries**: Myanmar (`MMK`), Thailand (`THB`), Malaysia (`MYR`), Singapore (`SGD`), South Korea (`KRW`), and Japan (`JPY`), with editable per-staple local prices.
-2. **`ဗေဒင်/ယတြာ` (Mahabote Astrology & Yadayas):** Name-based 7-house Mahabote birth chart calculation, Uposatha/Yatyaza/Pyathada Myanmar Calendar lookup, and 39 studio remedy images (`assets/images/baydin/`).
+2. **`ဗေဒင်/ယတြာ` (Weekly/Monthly Horoscope, Mahabote, Compatibility & Yadayas):**
+   - 100% offline **Weekly (7-day)** and **Monthly (3-phase + key dates)** personalized forecasts powered by real Myanmar Calendar transits (`myanmar_calendar_dart`) with week/month navigation.
+   - Name-based 7-house Mahabote birth chart, Current-Age Thet-Yauk, Today's Auspicious Hours & Nagahle Direction, Classical 4-verse 2-Person Compatibility, Uposatha/Yatyaza/Pyathada calendar, and 39 studio remedy images (`assets/images/baydin/`).
 3. **`စာရင်း/တွက်စက်` (Finance & Calculators):** Kyat/Pae/Yway Gold calculator, Loan EMI, Exchange rate, Ledger & Loan/Rental tracker.
 4. **`အခြား` (Utilities, Backup & Security):** Renewal Reminders, Emergency QR Card, JSON Backup/Restore & Account Vault Sync (`cloud_sync_service.dart`).
 

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:myanmar_daily_app/domain/models/baydin_forecast.dart';
 import 'package:myanmar_daily_app/domain/models/baydin_reading.dart';
+import 'package:myanmar_daily_app/domain/use_cases/baydin_forecast_engine.dart';
 import 'package:myanmar_daily_app/domain/use_cases/myanmar_baydin_engine.dart';
 import 'package:myanmar_daily_app/ui/features/baydin/view_models/baydin_view_model.dart';
 import 'package:myanmar_daily_app/ui/features/baydin/views/baydin_screen.dart';
@@ -222,5 +224,167 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('ဥပုသ် • အဖိတ်နေ့'), findsOneWidget);
+  });
+
+  test('BaydinForecastEngine calculates Weekly, Monthly, Daily Auspicious Guide, and Classical Compatibility', () {
+    final base = MyanmarBaydinEngine();
+    final forecastEngine = BaydinForecastEngine(baseEngine: base);
+    final refDate = DateTime(2026, 11, 19);
+
+    final reading = base.calculateReading(
+      name: 'Sithu Min',
+      birthDate: DateTime(1995, 5, 10),
+      gender: BaydinGender.male,
+      focus: YadayaFocus.wealthBusiness,
+      referenceDate: refDate,
+    );
+
+    // 1. Weekly forecast (Mon..Sun 7 days) + distinct next week
+    final thisWeek = forecastEngine.calculateWeeklyForecast(
+      reading: reading,
+      targetDate: refDate,
+    );
+    final nextWeek = forecastEngine.calculateWeeklyForecast(
+      reading: reading,
+      targetDate: refDate.add(const Duration(days: 7)),
+    );
+    expect(thisWeek.days.length, 7);
+    expect(thisWeek.weekStart.weekday, DateTime.monday);
+    expect(thisWeek.weekEnd.weekday, DateTime.sunday);
+    expect(thisWeek.weekScore, inInclusiveRange(48, 96));
+    expect(thisWeek.bestDays, isNotEmpty);
+    expect(thisWeek.luckyNumbersMm, isNotEmpty);
+    expect(thisWeek.weekRangeLabelMm, isNot(equals(nextWeek.weekRangeLabelMm)));
+
+    // 2. Monthly forecast (Early / Mid / Late 3 phases + best & sabbath dates)
+    final nov = forecastEngine.calculateMonthlyForecast(
+      reading: reading,
+      year: 2026,
+      month: 11,
+    );
+    final dec = forecastEngine.calculateMonthlyForecast(
+      reading: reading,
+      year: 2026,
+      month: 12,
+    );
+    expect(nov.phases.length, 3);
+    expect(nov.phases[0].phaseTitleMm, 'လဆန်းပိုင်း');
+    expect(nov.phases[1].phaseTitleMm, 'လလယ်ပိုင်း');
+    expect(nov.phases[2].phaseTitleMm, 'လကုန်ပိုင်း');
+    expect(nov.bestDates, isNotEmpty);
+    expect(nov.sabbathDates.length, greaterThanOrEqualTo(3));
+    expect(nov.monthTitleMm, isNot(equals(dec.monthTitleMm)));
+
+    // 3. Daily Auspicious Guide (6 daytime 2-hour windows + Nagahle head)
+    final dailyGuide = forecastEngine.calculateDailyAuspiciousGuide(
+      date: refDate,
+      userBirthWeekday: reading.birthWeekday,
+    );
+    expect(dailyGuide.slots.length, 6);
+    expect(dailyGuide.nagahleHeadMm, isNotEmpty);
+    expect(dailyGuide.safeDirectionsMm, isNotEmpty);
+
+    // 4. Classical Myanmar 4-verse compatibility rules
+    final spouse = forecastEngine.calculateCompatibility(
+      personA: MyanmarWeekday.sunday,
+      personB: MyanmarWeekday.friday,
+    );
+    expect(spouse.bondTypeMm, contains('အိမ်ထောင်ဖက်'));
+    expect(spouse.classicalRhymeMm, contains('ဥဿာ'));
+    expect(spouse.overallScore, greaterThanOrEqualTo(90));
+
+    final friend = forecastEngine.calculateCompatibility(
+      personA: MyanmarWeekday.monday,
+      personB: MyanmarWeekday.wednesday,
+    );
+    expect(friend.bondTypeMm, contains('မိတ်ဖက်'));
+    expect(friend.classicalRhymeMm, contains('အောင်ပ'));
+
+    final element = forecastEngine.calculateCompatibility(
+      personA: MyanmarWeekday.saturday,
+      personB: MyanmarWeekday.thursday,
+    );
+    expect(element.bondTypeMm, contains('ဓာတ်ဖက်'));
+    expect(element.classicalRhymeMm, contains('ဓမ္မာ'));
+
+    final enemy = forecastEngine.calculateCompatibility(
+      personA: MyanmarWeekday.sunday,
+      personB: MyanmarWeekday.tuesday,
+    );
+    expect(enemy.bondTypeMm, contains('ရန်ဖက်'));
+    expect(enemy.isHarmonious, isFalse);
+  });
+
+  testWidgets('BaydinScreen supports Weekly/Monthly horoscopes, week/month stepping, auspicious hours, and Compatibility tab', (tester) async {
+    final vm = BaydinViewModel();
+    await vm.loadAll(now: DateTime(2026, 11, 19));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: BaydinScreen(viewModel: vm),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Expand Today's Auspicious Hours & Nagahle Direction card, then collapse
+    await tester.tap(find.textContaining('ယနေ့ အခါပေးနှင့် နဂါးခေါင်းလှည့်ရာ'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('နံနက် ၀၆:၀၀ – ၀၈:၀၀'), findsOneWidget);
+    await tester.tap(find.textContaining('ယနေ့ အခါပေးနှင့် နဂါးခေါင်းလှည့်ရာ'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('နံနက် ၀၆:၀၀ – ၀၈:၀၀'), findsNothing);
+
+    // Select Weekly period, enter name, and calculate
+    await tester.scrollUntilVisible(
+      find.byType(TextField),
+      150,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.enterText(find.byType(TextField), 'Sithu Min');
+    await tester.pump();
+    await tester.ensureVisible(find.text('တစ်ပတ်စာ').first);
+    await tester.tap(find.text('တစ်ပတ်စာ').first);
+    await tester.pumpAndSettle();
+
+    final calcBtn = find.text('ဗေဒင်မေးမည် (တွက်ချက်မည်)');
+    await tester.ensureVisible(calcBtn);
+    await tester.tap(calcBtn);
+    await tester.pumpAndSettle();
+
+    // Verify 7-day Weekly Forecast view
+    await tester.scrollUntilVisible(
+      find.textContaining('တစ်ပတ်စာ နေ့ရက်အလိုက် ကံဇာတာ (၇ ရက်)'),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.textContaining('တစ်ပတ်စာ နေ့ရက်အလိုက် ကံဇာတာ (၇ ရက်)'), findsOneWidget);
+
+    // Shift to Next Week
+    final beforeRange = vm.weeklyForecast!.weekRangeLabelMm;
+    vm.shiftWeek(1);
+    await tester.pumpAndSettle();
+    expect(vm.weeklyForecast!.weekRangeLabelMm, isNot(equals(beforeRange)));
+
+    // Switch to Monthly Forecast
+    vm.setActivePeriod(BaydinForecastPeriod.monthly);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.textContaining('တစ်လစာ ကံအတက်အကျ (၃ ပိုင်းခွဲ)'),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('လဆန်းပိုင်း (၁ – ၁၀ ရက်)'), findsOneWidget);
+    expect(find.text('လလယ်ပိုင်း (၁၁ – ၂၀ ရက်)'), findsOneWidget);
+    expect(find.text('လကုန်ပိုင်း (၂၁ – ၃၀ ရက်)'), findsOneWidget);
+
+    // Switch to 2-Person Compatibility tab
+    await tester.tap(find.text('တိုက်ဆိုင်စစ်'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('နှစ်ဦးသား မွေးနံတိုက်ဆိုင်စစ်'), findsOneWidget);
+
+    vm.setCompatPersonA(MyanmarWeekday.sunday);
+    vm.setCompatPersonB(MyanmarWeekday.friday);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('ဥဿာ – စိန်ပန်း – ဒန်းလှ – ကိုရှာ'), findsOneWidget);
   });
 }

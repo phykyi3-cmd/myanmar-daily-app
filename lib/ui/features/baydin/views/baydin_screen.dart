@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'package:myanmar_daily_app/domain/models/baydin_forecast.dart';
 import 'package:myanmar_daily_app/domain/models/baydin_reading.dart';
 import 'package:myanmar_daily_app/domain/models/shopping_item.dart';
 import 'package:myanmar_daily_app/ui/core/theme/app_theme.dart';
 import 'package:myanmar_daily_app/ui/core/utils/formatters.dart';
 import 'package:myanmar_daily_app/ui/features/daily_market/view_models/daily_market_view_model.dart';
 import '../view_models/baydin_view_model.dart';
+import 'baydin_forecast_sections.dart';
 
 /// Sayar San Zarni Bo style Mahabote Baydin, Yadaya Flower/Outfit guide, and Myanmar Calendar screen.
 class BaydinScreen extends StatefulWidget {
@@ -122,14 +124,31 @@ class _BaydinScreenState extends State<BaydinScreen> {
                 child: SizedBox(
                   width: double.infinity,
                   child: SegmentedButton<BaydinSection>(
+                    showSelectedIcon: false,
                     segments: const [
                       ButtonSegment(
                         value: BaydinSection.calculator,
-                        label: Text('ဗေဒင် • ယတြာတွက်'),
+                        label: Text(
+                          'ဗေဒင် • ယတြာ',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      ButtonSegment(
+                        value: BaydinSection.compatibility,
+                        label: Text(
+                          'တိုက်ဆိုင်စစ်',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                       ButtonSegment(
                         value: BaydinSection.calendar,
-                        label: Text('ရက်ရာဇာ • ဥပုသ်'),
+                        label: Text(
+                          'ရက်ရာဇာ • ဥပုသ်',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ],
                     selected: {vm.activeSection},
@@ -139,20 +158,24 @@ class _BaydinScreenState extends State<BaydinScreen> {
                 ),
               ),
               Expanded(
-                child: vm.activeSection == BaydinSection.calculator
-                    ? _BaydinCalculatorSection(
-                        viewModel: vm,
-                        nameController: _nameCtrl,
-                        onPickBirthDate: _pickBirthDate,
-                        onCalculate: () => vm.calculateAndSave(
-                          name: _nameCtrl.text,
-                        ),
-                        onAddFlowerToMarket: _addYadayaFlowerToShopping,
-                      )
-                    : _CalendarCheckerSection(
-                        viewModel: vm,
-                        onPickDate: _pickCalendarDate,
+                child: switch (vm.activeSection) {
+                  BaydinSection.calculator => _BaydinCalculatorSection(
+                      viewModel: vm,
+                      nameController: _nameCtrl,
+                      onPickBirthDate: _pickBirthDate,
+                      onCalculate: () => vm.calculateAndSave(
+                        name: _nameCtrl.text,
                       ),
+                      onAddFlowerToMarket: _addYadayaFlowerToShopping,
+                    ),
+                  BaydinSection.compatibility => BaydinCompatibilitySection(
+                      viewModel: vm,
+                    ),
+                  BaydinSection.calendar => _CalendarCheckerSection(
+                      viewModel: vm,
+                      onPickDate: _pickCalendarDate,
+                    ),
+                },
               ),
             ],
           ),
@@ -187,7 +210,7 @@ class _BaydinCalculatorSection extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
       children: [
-        if (today != null)
+        if (today != null) ...[
           InkWell(
             onTap: () => viewModel.setActiveSection(BaydinSection.calendar),
             borderRadius: BorderRadius.circular(16),
@@ -246,6 +269,13 @@ class _BaydinCalculatorSection extends StatelessWidget {
               ),
             ),
           ),
+          if (viewModel.todayAuspiciousGuide != null) ...[
+            const SizedBox(height: 8),
+            DailyAuspiciousExpandableCard(
+              guide: viewModel.todayAuspiciousGuide!,
+            ),
+          ],
+        ],
         const SizedBox(height: 12),
 
         // User Input Card (Name + Birth Date + Calculate CTA)
@@ -412,6 +442,31 @@ class _BaydinCalculatorSection extends StatelessWidget {
                     )
                     .toList(),
               ),
+              const SizedBox(height: 10),
+              const Text(
+                'ဟောကာလ ရွေးချယ်ရန် (တစ်ပတ်စာ / တစ်လစာ / မဟာဘုတ်)',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.gray200,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: BaydinForecastPeriod.values
+                    .map(
+                      (period) => ChoiceChip(
+                        visualDensity: VisualDensity.compact,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        label: Text(period.labelMm),
+                        selected: viewModel.activePeriod == period,
+                        onSelected: (_) => viewModel.setActivePeriod(period),
+                      ),
+                    )
+                    .toList(),
+              ),
               const SizedBox(height: 12),
               Row(
                 children: [
@@ -432,13 +487,49 @@ class _BaydinCalculatorSection extends StatelessWidget {
                   ],
                 ],
               ),
+              if (viewModel.hasSavedProfile) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.bookmark_added_rounded,
+                      size: 14,
+                      color: AppTheme.neonLime500,
+                    ),
+                    const SizedBox(width: 6),
+                    const Expanded(
+                      child: Text(
+                        'ပရိုဖိုင် သိမ်းထားပြီး • အပတ်တိုင်း/လတိုင်း တစ်ချက်နှိပ်ရုံဖြင့် ကြည့်နိုင်သည်',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: AppTheme.gray300,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        nameController.clear();
+                        viewModel.clearSavedProfile();
+                      },
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                      ),
+                      child: const Text(
+                        'ဖျက်မည်',
+                        style: TextStyle(fontSize: 11),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
         const SizedBox(height: 16),
 
         AnimatedSwitcher(
-          duration: const Duration(milliseconds: 420),
+          duration: const Duration(milliseconds: 380),
           switchInCurve: Curves.easeOutCubic,
           switchOutCurve: Curves.easeIn,
           transitionBuilder: (child, animation) {
@@ -446,7 +537,7 @@ class _BaydinCalculatorSection extends StatelessWidget {
               opacity: animation,
               child: SlideTransition(
                 position: Tween<Offset>(
-                  begin: const Offset(0, -0.05),
+                  begin: const Offset(0, -0.04),
                   end: Offset.zero,
                 ).animate(animation),
                 child: child,
@@ -457,12 +548,59 @@ class _BaydinCalculatorSection extends StatelessWidget {
               ? const _BaydinPromptPlaceholder(
                   key: ValueKey('baydin-placeholder'),
                 )
-              : _BaydinReadingView(
+              : Column(
                   key: ValueKey(
-                    '${reading.name}_${reading.birthDate.toIso8601String()}_${reading.focus.name}_${reading.gender.name}_${reading.yadayaTargetPlanet.name}',
+                    '${reading.name}_${reading.birthDate.toIso8601String()}_${reading.focus.name}_${reading.gender.name}_${viewModel.activePeriod.name}_${viewModel.weekOffset}_${viewModel.monthOffset}',
                   ),
-                  reading: reading,
-                  onAddFlowerToMarket: onAddFlowerToMarket,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    BaydinPeriodSwitcherBar(
+                      activePeriod: viewModel.activePeriod,
+                      onSelected: viewModel.setActivePeriod,
+                      weeklyScore: viewModel.weeklyForecast?.weekScore,
+                      monthlyScore: viewModel.monthlyForecast?.monthScore,
+                    ),
+                    const SizedBox(height: 14),
+                    if (viewModel.activePeriod == BaydinForecastPeriod.weekly &&
+                        viewModel.weeklyForecast != null)
+                      WeeklyForecastView(
+                        reading: reading,
+                        forecast: viewModel.weeklyForecast!,
+                        weekOffset: viewModel.weekOffset,
+                        onShiftWeek: viewModel.shiftWeek,
+                        onResetWeek: viewModel.resetToCurrentWeek,
+                        onAddFlowerToMarket: onAddFlowerToMarket,
+                      )
+                    else if (viewModel.activePeriod ==
+                            BaydinForecastPeriod.monthly &&
+                        viewModel.monthlyForecast != null)
+                      MonthlyForecastView(
+                        reading: reading,
+                        forecast: viewModel.monthlyForecast!,
+                        monthOffset: viewModel.monthOffset,
+                        onShiftMonth: viewModel.shiftMonth,
+                        onResetMonth: viewModel.resetToCurrentMonth,
+                        onAddFlowerToMarket: onAddFlowerToMarket,
+                      )
+                    else ...[
+                      if (viewModel.weeklyForecast != null &&
+                          viewModel.monthlyForecast != null) ...[
+                        QuickPeriodTeaserBanner(
+                          weekly: viewModel.weeklyForecast!,
+                          monthly: viewModel.monthlyForecast!,
+                          onOpenWeekly: () => viewModel
+                              .setActivePeriod(BaydinForecastPeriod.weekly),
+                          onOpenMonthly: () => viewModel
+                              .setActivePeriod(BaydinForecastPeriod.monthly),
+                        ),
+                        const SizedBox(height: 14),
+                      ],
+                      _BaydinReadingView(
+                        reading: reading,
+                        onAddFlowerToMarket: onAddFlowerToMarket,
+                      ),
+                    ],
+                  ],
                 ),
         ),
       ],
@@ -501,7 +639,7 @@ class _BaydinPromptPlaceholder extends StatelessWidget {
           ),
           SizedBox(height: 6),
           Text(
-            'မြန်မာအမည် သို့မဟုတ် English အမည် (ဥပမာ - Sithu Min) ဖြင့် မေးမြန်းနိုင်ပါသည်။ ဗေဒင်မေးလိုက်မှသာ သင့်ဇာတာအလိုက် ကံပွင့်အရောင်များ၊ ဘုရားပန်း (အပွင့်အရေအတွက်)၊ ဆီမီး/ဖယောင်းတိုင် နှင့် ဝတ်စုံဓာတ်ပုံများ ကျဆင်းပေါ်လာပါမည်။',
+            'မြန်မာအမည် သို့မဟုတ် English အမည် (ဥပမာ - Sithu Min) ဖြင့် မေးမြန်းနိုင်ပါသည်။ ဗေဒင်မေးလိုက်မှသာ တစ်ပတ်စာ (၇ ရက်)၊ တစ်လစာ (၃၀ ရက်) ဟောစာတမ်းများနှင့် မဟာဘုတ်ဇာတာ၊ ဘုရားပန်း၊ ဆီမီး/ဖယောင်းတိုင် နှင့် ဝတ်စုံဓာတ်ပုံများ ကျဆင်းပေါ်လာပါမည်။',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 12.5,
@@ -517,7 +655,6 @@ class _BaydinPromptPlaceholder extends StatelessWidget {
 
 class _BaydinReadingView extends StatelessWidget {
   const _BaydinReadingView({
-    super.key,
     required this.reading,
     required this.onAddFlowerToMarket,
   });
