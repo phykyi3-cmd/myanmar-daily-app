@@ -1,8 +1,10 @@
+import '../../domain/models/donation_su_mae_models.dart';
 import '../../domain/models/ledger_entry.dart';
 import '../../domain/models/loan_rental_item.dart';
 import '../services/local_db_service.dart';
 
-/// Repository managing community ledger entries and loans/rentals in SQLite.
+/// Repository managing community ledger entries, group donations, Myanmar Su Mae groups,
+/// and loans/rentals in local SQLite / Web storage.
 class FinanceRepository {
   FinanceRepository({required LocalDbService dbService})
       : _dbService = dbService;
@@ -55,5 +57,65 @@ class FinanceRepository {
 
   Future<void> deleteLoanRental(int id) async {
     await _dbService.deleteById(LocalDbService.tableLoansRentals, id);
+  }
+
+  // ---- Community Donation Campaigns (အလှူစာရင်း) ----
+
+  Future<List<DonationCampaign>> getDonationCampaigns() async {
+    final rows = await _dbService.queryAll(
+      LocalDbService.tableDonationCampaigns,
+      orderBy: 'updated_at DESC',
+    );
+    return rows.map(DonationCampaign.fromMap).toList();
+  }
+
+  Future<int> saveDonationCampaign(DonationCampaign campaign) async {
+    final now = DateTime.now();
+    if (campaign.id == null) {
+      return _dbService.insert(
+        LocalDbService.tableDonationCampaigns,
+        campaign.copyWith(updatedAt: now).toMap(),
+      );
+    }
+    await _dbService.updateById(
+      LocalDbService.tableDonationCampaigns,
+      campaign.id!,
+      campaign.copyWith(updatedAt: now).toMap()..remove('id'),
+    );
+    return campaign.id!;
+  }
+
+  Future<void> deleteDonationCampaign(int id) async {
+    await _dbService.deleteById(LocalDbService.tableDonationCampaigns, id);
+  }
+
+  // ---- Myanmar Su Mae Groups (စုမဲ / ငွေစုစု) ----
+
+  Future<List<SuMaeGroup>> getSuMaeGroups() async {
+    final rows = await _dbService.queryAll(
+      LocalDbService.tableSuMaeGroups,
+      orderBy: 'updated_at DESC',
+    );
+    return rows.map(SuMaeGroup.fromMap).toList();
+  }
+
+  Future<int> saveSuMaeGroup(SuMaeGroup group) async {
+    final now = DateTime.now();
+    if (group.id == null) {
+      return _dbService.insert(
+        LocalDbService.tableSuMaeGroups,
+        group.copyWith(updatedAt: now).toMap(),
+      );
+    }
+    await _dbService.updateById(
+      LocalDbService.tableSuMaeGroups,
+      group.id!,
+      group.copyWith(updatedAt: now).toMap()..remove('id'),
+    );
+    return group.id!;
+  }
+
+  Future<void> deleteSuMaeGroup(int id) async {
+    await _dbService.deleteById(LocalDbService.tableSuMaeGroups, id);
   }
 }

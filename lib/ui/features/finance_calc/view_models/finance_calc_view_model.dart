@@ -3,12 +3,16 @@ import 'package:flutter/foundation.dart';
 import 'package:myanmar_daily_app/data/repositories/finance_repository.dart';
 import 'package:myanmar_daily_app/data/services/market_price_service.dart';
 import 'package:myanmar_daily_app/domain/models/commodity_price.dart';
+import 'package:myanmar_daily_app/domain/models/donation_su_mae_models.dart';
 import 'package:myanmar_daily_app/domain/models/ledger_entry.dart';
 import 'package:myanmar_daily_app/domain/models/loan_rental_item.dart';
 import 'package:myanmar_daily_app/domain/use_cases/myanmar_calculators.dart';
 
 /// Sub-tabs inside the Finance & Calculators screen.
 enum FinanceSection { ledger, loansRentals, calculators }
+
+/// Dedicated sub-views inside the 'အလှူ/စုမဲ' tab so Donations and Myanmar Su Mae stay separate.
+enum CommunitySubTab { donations, suMae, generalLedger }
 
 /// ViewModel managing community ledgers, loans/rentals, and Online-Synced Myanmar calculators.
 class FinanceCalcViewModel extends ChangeNotifier {
@@ -23,6 +27,9 @@ class FinanceCalcViewModel extends ChangeNotifier {
 
   FinanceSection _activeSection = FinanceSection.ledger;
   FinanceSection get activeSection => _activeSection;
+
+  CommunitySubTab _activeCommunityTab = CommunitySubTab.donations;
+  CommunitySubTab get activeCommunityTab => _activeCommunityTab;
 
   bool _isLoading = false;
   bool get isLoading => _isLoading;
@@ -60,6 +67,23 @@ class FinanceCalcViewModel extends ChangeNotifier {
 
   List<LoanRentalItem> _loansRentals = const [];
   List<LoanRentalItem> get loansRentals => _loansRentals;
+
+  List<DonationCampaign> _donationCampaigns = const [];
+  List<DonationCampaign> get donationCampaigns => _donationCampaigns;
+
+  List<SuMaeGroup> _suMaeGroups = const [];
+  List<SuMaeGroup> get suMaeGroups => _suMaeGroups;
+
+  int get totalDonationsCollectedMmk => _donationCampaigns.fold<int>(
+        0,
+        (sum, c) => sum + c.totalCollectedMmk,
+      );
+
+  int get totalDonorsCount =>
+      _donationCampaigns.fold<int>(0, (sum, c) => sum + c.donorCount);
+
+  int get totalActiveSuMaePotMmk =>
+      _suMaeGroups.fold<int>(0, (sum, g) => sum + g.potSizeMmk);
 
   GoldCalculationResult? _goldResult;
   GoldCalculationResult? get goldResult => _goldResult;
@@ -102,6 +126,12 @@ class FinanceCalcViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setActiveCommunityTab(CommunitySubTab tab) {
+    if (_activeCommunityTab == tab) return;
+    _activeCommunityTab = tab;
+    notifyListeners();
+  }
+
   void setGoldQuality({required bool use15Pae}) {
     _use15PaeGold = use15Pae;
     notifyListeners();
@@ -118,12 +148,337 @@ class FinanceCalcViewModel extends ChangeNotifier {
     try {
       _ledgerEntries = await _financeRepository.getLedgerEntries();
       _loansRentals = await _financeRepository.getLoansRentals();
+      _donationCampaigns = await _financeRepository.getDonationCampaigns();
+      _suMaeGroups = await _financeRepository.getSuMaeGroups();
       _marketSnapshot = await _marketPriceService.syncLiveMarketPrices();
       _recomputeDefaultsFromSnapshot();
     } finally {
       _isLoading = false;
       notifyListeners();
     }
+  }
+
+  Future<void> _reloadCommunityData() async {
+    _donationCampaigns = await _financeRepository.getDonationCampaigns();
+    _suMaeGroups = await _financeRepository.getSuMaeGroups();
+    notifyListeners();
+  }
+
+  // ---- Group Donation Campaigns (အလှူစာရင်း) ----
+
+  Future<void> createDonationCampaign({
+    required String title,
+    required DonationType type,
+    int targetAmountMmk = 0,
+    required DateTime eventDate,
+    String note = '',
+  }) async {
+    final now = DateTime.now();
+    await _financeRepository.saveDonationCampaign(
+      DonationCampaign(
+        title: title.trim(),
+        type: type,
+        targetAmountMmk: targetAmountMmk,
+        eventDate: eventDate,
+        note: note.trim(),
+        contributions: const [],
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
+    await _reloadCommunityData();
+  }
+
+  Future<void> addDonorContribution({
+    required DonationCampaign campaign,
+    required String donorName,
+    required int amountMmk,
+    required DateTime donatedDate,
+    String paymentMethodMm = 'ငွေသား',
+    bool isPaid = true,
+    String note = '',
+  }) async {
+    final item = DonorContribution(
+      id: '${DateTime.now().microsecondsSinceEpoch}_${campaign.contributions.length}',
+      donorName: donorName.trim(),
+      amountMmk: amountMmk,
+      donatedDate: donatedDate,
+      paymentMethodMm: paymentMethodMm,
+      isPaid: isPaid,
+      note: note.trim(),
+    );
+    final updated = campaign.copyWith(
+      contributions: [...campaign.contributions, item],
+      updatedAt: DateTime.now(),
+    );
+    await _financeRepository.saveDonationCampaign(updated);
+    await _reloadCommunityData();
+  }
+
+  Future<void> toggleDonorPaidStatus(
+    DonationCampaign campaign,
+    String contributionId,
+  ) async {
+    final updatedList = campaign.contributions
+        .map(
+          (c) => c.id == contributionId ? c.copyWith(isPaid: !c.isPaid) : c,
+        )
+        .toList();
+    await _financeRepository.saveDonationCampaign(
+      campaign.copyWith(contributions: updatedList, updatedAt: DateTime.now()),
+    );
+    await _reloadCommunityData();
+  }
+
+  Future<void> deleteDonorContribution(
+    DonationCampaign campaign,
+    String contributionId,
+  ) async {
+    final updatedList =
+        campaign.contributions.where((c) => c.id != contributionId).toList();
+    await _financeRepository.saveDonationCampaign(
+      campaign.copyWith(contributions: updatedList, updatedAt: DateTime.now()),
+    );
+    await _reloadCommunityData();
+  }
+
+  Future<void> deleteDonationCampaign(int id) async {
+    await _financeRepository.deleteDonationCampaign(id);
+    await _reloadCommunityData();
+  }
+
+  // ---- Traditional Myanmar Su Mae (စုမဲ / ငွေစုစု ROSCA) ----
+
+  Future<void> createSuMaeGroup({
+    required String name,
+    required SuMaeStyle style,
+    required SuMaeCycle cycle,
+    required int contributionPerShareMmk,
+    required int plannedRounds,
+    String organizerName = '',
+    int organizerFeeMmk = 0,
+    required DateTime startDate,
+    List<String> initialMemberNames = const [],
+  }) async {
+    final now = DateTime.now();
+    final members = <SuMaeMember>[];
+    for (var i = 0; i < initialMemberNames.length; i++) {
+      final clean = initialMemberNames[i].trim();
+      if (clean.isEmpty) continue;
+      members.add(
+        SuMaeMember(
+          id: 'm_${now.microsecondsSinceEpoch}_$i',
+          name: clean,
+          sharesCount: 1.0,
+        ),
+      );
+    }
+
+    final rounds = [
+      SuMaeRound(
+        roundNumber: 1,
+        dueDate: cycle.dateForRound(startDate, 1),
+      ),
+    ];
+
+    await _financeRepository.saveSuMaeGroup(
+      SuMaeGroup(
+        name: name.trim(),
+        style: style,
+        cycle: cycle,
+        contributionPerShareMmk: contributionPerShareMmk,
+        plannedRounds: plannedRounds.clamp(2, 120),
+        organizerName: organizerName.trim(),
+        organizerFeeMmk: organizerFeeMmk,
+        startDate: startDate,
+        members: members,
+        rounds: rounds,
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
+    await _reloadCommunityData();
+  }
+
+  Future<void> addSuMaeMember({
+    required SuMaeGroup group,
+    required String name,
+    String phone = '',
+    double sharesCount = 1.0,
+    String note = '',
+  }) async {
+    final newMember = SuMaeMember(
+      id: 'm_${DateTime.now().microsecondsSinceEpoch}_${group.members.length}',
+      name: name.trim(),
+      phone: phone.trim(),
+      sharesCount: sharesCount,
+      note: note.trim(),
+    );
+    await _financeRepository.saveSuMaeGroup(
+      group.copyWith(
+        members: [...group.members, newMember],
+        updatedAt: DateTime.now(),
+      ),
+    );
+    await _reloadCommunityData();
+  }
+
+  Future<void> removeSuMaeMember(SuMaeGroup group, String memberId) async {
+    final updatedMembers =
+        group.members.where((m) => m.id != memberId).toList();
+    final updatedRounds = group.rounds.map((r) {
+      final nextPayments = Map<String, SuMaePayment>.from(r.payments)
+        ..remove(memberId);
+      final cleared = r.winnerMemberId == memberId;
+      return r.copyWith(
+        payments: nextPayments,
+        clearWinner: cleared,
+      );
+    }).toList();
+    await _financeRepository.saveSuMaeGroup(
+      group.copyWith(
+        members: updatedMembers,
+        rounds: updatedRounds,
+        updatedAt: DateTime.now(),
+      ),
+    );
+    await _reloadCommunityData();
+  }
+
+  Future<void> toggleSuMaeRoundPayment({
+    required SuMaeGroup group,
+    required int roundNumber,
+    required SuMaeMember member,
+    String paymentMethodMm = 'ငွေသား',
+  }) async {
+    final updatedRounds = group.rounds.map((r) {
+      if (r.roundNumber != roundNumber) return r;
+      final nextPayments = Map<String, SuMaePayment>.from(r.payments);
+      if (nextPayments.containsKey(member.id)) {
+        nextPayments.remove(member.id);
+      } else {
+        nextPayments[member.id] = SuMaePayment(
+          memberId: member.id,
+          amountMmk: group.expectedContributionForMember(member),
+          paidAt: DateTime.now(),
+          paymentMethodMm: paymentMethodMm,
+        );
+      }
+      return r.copyWith(payments: nextPayments);
+    }).toList();
+
+    await _financeRepository.saveSuMaeGroup(
+      group.copyWith(rounds: updatedRounds, updatedAt: DateTime.now()),
+    );
+    await _reloadCommunityData();
+  }
+
+  Future<void> addNextSuMaeRound(SuMaeGroup group) async {
+    final nextNum = group.rounds.isEmpty
+        ? 1
+        : group.rounds
+                .map((r) => r.roundNumber)
+                .reduce((a, b) => a > b ? a : b) +
+            1;
+    final nextRound = SuMaeRound(
+      roundNumber: nextNum,
+      dueDate: group.cycle.dateForRound(group.startDate, nextNum),
+    );
+    await _financeRepository.saveSuMaeGroup(
+      group.copyWith(
+        rounds: [...group.rounds, nextRound],
+        updatedAt: DateTime.now(),
+      ),
+    );
+    await _reloadCommunityData();
+  }
+
+  Future<void> settleSuMaeRoundWinner({
+    required SuMaeGroup group,
+    required int roundNumber,
+    required SuMaeMember winner,
+    int auctionBidMmk = 0,
+    String note = '',
+  }) async {
+    final now = DateTime.now();
+    final netPayout = group.computeNetPayout(auctionBidMmk: auctionBidMmk);
+
+    final updatedMembers = group.members.map((m) {
+      if (m.id == winner.id) {
+        return m.copyWith(
+          wonRoundNumber: roundNumber,
+          wonDate: now,
+          wonPayoutMmk: netPayout,
+        );
+      }
+      if (m.wonRoundNumber == roundNumber) {
+        return m.copyWith(clearWon: true);
+      }
+      return m;
+    }).toList();
+
+    final updatedRounds = group.rounds.map((r) {
+      if (r.roundNumber != roundNumber) return r;
+      return r.copyWith(
+        winnerMemberId: winner.id,
+        winnerName: winner.name,
+        auctionBidMmk: auctionBidMmk,
+        organizerFeeMmk: group.organizerFeeMmk,
+        netPayoutMmk: netPayout,
+        settledAt: now,
+        note: note.trim(),
+      );
+    }).toList();
+
+    // Auto-prepare the next round if not yet at plannedRounds and next round doesn't exist.
+    final hasNext = updatedRounds.any((r) => r.roundNumber == roundNumber + 1);
+    if (!hasNext && roundNumber < group.plannedRounds) {
+      updatedRounds.add(
+        SuMaeRound(
+          roundNumber: roundNumber + 1,
+          dueDate: group.cycle.dateForRound(group.startDate, roundNumber + 1),
+        ),
+      );
+    }
+
+    await _financeRepository.saveSuMaeGroup(
+      group.copyWith(
+        members: updatedMembers,
+        rounds: updatedRounds,
+        updatedAt: now,
+      ),
+    );
+    await _reloadCommunityData();
+  }
+
+  Future<void> undoSuMaeRoundWinner({
+    required SuMaeGroup group,
+    required int roundNumber,
+  }) async {
+    final updatedMembers = group.members.map((m) {
+      if (m.wonRoundNumber == roundNumber) {
+        return m.copyWith(clearWon: true);
+      }
+      return m;
+    }).toList();
+    final updatedRounds = group.rounds.map((r) {
+      if (r.roundNumber != roundNumber) return r;
+      return r.copyWith(clearWinner: true);
+    }).toList();
+
+    await _financeRepository.saveSuMaeGroup(
+      group.copyWith(
+        members: updatedMembers,
+        rounds: updatedRounds,
+        updatedAt: DateTime.now(),
+      ),
+    );
+    await _reloadCommunityData();
+  }
+
+  Future<void> deleteSuMaeGroup(int id) async {
+    await _financeRepository.deleteSuMaeGroup(id);
+    await _reloadCommunityData();
   }
 
   Future<void> syncOnlineRates() async {

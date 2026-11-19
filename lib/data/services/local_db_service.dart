@@ -8,7 +8,7 @@ import 'package:sqflite/sqflite.dart';
 /// Shared local storage service using SQLite on mobile and SharedPreferences on Web.
 class LocalDbService {
   static const String _dbName = 'myanmar_daily.db';
-  static const int _dbVersion = 3;
+  static const int _dbVersion = 4;
   static const String _webTablePrefix = 'web_sql_table_';
 
   static const String tableLedger = 'ledger_entries';
@@ -16,6 +16,8 @@ class LocalDbService {
   static const String tableShopping = 'shopping_items';
   static const String tablePurchaseRecords = 'purchase_records';
   static const String tableReminders = 'reminders';
+  static const String tableDonationCampaigns = 'donation_campaigns';
+  static const String tableSuMaeGroups = 'su_mae_groups';
 
   Database? _db;
 
@@ -94,6 +96,42 @@ class LocalDbService {
         is_completed INTEGER NOT NULL
       )
     ''');
+
+    await _createCommunityTables(db);
+  }
+
+  Future<void> _createCommunityTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $tableDonationCampaigns (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        type TEXT NOT NULL,
+        target_amount_mmk INTEGER NOT NULL DEFAULT 0,
+        event_date TEXT NOT NULL,
+        note TEXT NOT NULL DEFAULT '',
+        contributions_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $tableSuMaeGroups (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        style TEXT NOT NULL,
+        cycle TEXT NOT NULL,
+        contribution_per_share_mmk INTEGER NOT NULL,
+        planned_rounds INTEGER NOT NULL,
+        organizer_name TEXT NOT NULL DEFAULT '',
+        organizer_fee_mmk INTEGER NOT NULL DEFAULT 0,
+        start_date TEXT NOT NULL,
+        members_json TEXT NOT NULL,
+        rounds_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -117,7 +155,9 @@ class LocalDbService {
         )
       ''');
     }
-    // Keep _dbVersion = 3 for forward compatibility with existing Android installs.
+    if (oldVersion < 4) {
+      await _createCommunityTables(db);
+    }
   }
 
   Future<List<Map<String, Object?>>> _readWebTable(String table) async {
@@ -155,6 +195,9 @@ class LocalDbService {
       } else if (orderBy != null && orderBy.contains('due_date ASC')) {
         rows.sort((a, b) =>
             '${a['due_date'] ?? ''}'.compareTo('${b['due_date'] ?? ''}'));
+      } else if (orderBy != null && orderBy.contains('updated_at DESC')) {
+        rows.sort((a, b) =>
+            '${b['updated_at'] ?? ''}'.compareTo('${a['updated_at'] ?? ''}'));
       }
       return rows;
     }

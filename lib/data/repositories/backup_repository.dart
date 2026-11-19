@@ -35,6 +35,8 @@ class BackupRepository {
     final purchaseRecords = await _dailyMarketRepository.getPurchaseRecords();
     final reminders = await _reminderRepository.getReminders();
     final qrCard = await _settingsQrRepository.getQrCard();
+    final donations = await _financeRepository.getDonationCampaigns();
+    final suMaeGroups = await _financeRepository.getSuMaeGroups();
 
     return _backupService.encodeBackup(
       BackupSnapshot(
@@ -46,6 +48,8 @@ class BackupRepository {
         purchaseRecords: purchaseRecords,
         reminders: reminders,
         qrCard: qrCard,
+        donationCampaigns: donations,
+        suMaeGroups: suMaeGroups,
       ),
     );
   }
@@ -59,6 +63,8 @@ class BackupRepository {
     await _dbService.clearTable(LocalDbService.tableShopping);
     await _dbService.clearTable(LocalDbService.tablePurchaseRecords);
     await _dbService.clearTable(LocalDbService.tableReminders);
+    await _dbService.clearTable(LocalDbService.tableDonationCampaigns);
+    await _dbService.clearTable(LocalDbService.tableSuMaeGroups);
 
     for (final entry in snapshot.ledgerEntries) {
       await _financeRepository.addLedgerEntry(entry);
@@ -74,6 +80,12 @@ class BackupRepository {
     }
     for (final reminder in snapshot.reminders) {
       await _reminderRepository.addReminder(reminder);
+    }
+    for (final campaign in snapshot.donationCampaigns) {
+      await _financeRepository.saveDonationCampaign(campaign.copyWith(id: null));
+    }
+    for (final group in snapshot.suMaeGroups) {
+      await _financeRepository.saveSuMaeGroup(group.copyWith(id: null));
     }
     await _settingsQrRepository.saveQrCard(snapshot.qrCard);
   }

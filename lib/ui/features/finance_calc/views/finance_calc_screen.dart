@@ -8,6 +8,7 @@ import 'package:myanmar_daily_app/ui/core/utils/formatters.dart';
 import 'package:myanmar_daily_app/ui/core/widgets/category_selector_chips.dart';
 import 'package:myanmar_daily_app/ui/core/widgets/empty_state_card.dart';
 import '../view_models/finance_calc_view_model.dart';
+import 'donation_su_mae_sections.dart';
 
 /// Combined screen for Community Ledgers, Loans/Rentals, and Myanmar Calculators.
 class FinanceCalcScreen extends StatefulWidget {
@@ -214,19 +215,35 @@ class _FinanceCalcScreenState extends State<FinanceCalcScreen> {
       builder: (context, _) {
         final showFab = vm.activeSection != FinanceSection.calculators;
 
+        VoidCallback fabAction;
+        String fabLabel;
+        if (vm.activeSection == FinanceSection.loansRentals) {
+          fabAction = _showAddLoanDialog;
+          fabLabel = 'မှတ်တမ်းထည့်';
+        } else {
+          switch (vm.activeCommunityTab) {
+            case CommunitySubTab.donations:
+              fabAction = () => showCreateDonationCampaignDialog(context, vm);
+              fabLabel = 'အလှူဖွင့်မည်';
+              break;
+            case CommunitySubTab.suMae:
+              fabAction = () => showCreateSuMaeGroupDialog(context, vm);
+              fabLabel = 'စုမဲဖွင့်မည်';
+              break;
+            case CommunitySubTab.generalLedger:
+              fabAction = _showAddLedgerDialog;
+              fabLabel = 'စာရင်းထည့်';
+              break;
+          }
+        }
+
         return Scaffold(
           appBar: AppBar(title: const Text('စာရင်းနဲ့ တွက်စက်')),
           floatingActionButton: showFab
               ? FloatingActionButton.extended(
-                  onPressed: vm.activeSection == FinanceSection.ledger
-                      ? _showAddLedgerDialog
-                      : _showAddLoanDialog,
+                  onPressed: fabAction,
                   icon: const Icon(Icons.add),
-                  label: Text(
-                    vm.activeSection == FinanceSection.ledger
-                        ? 'စာရင်းထည့်'
-                        : 'မှတ်တမ်းထည့်',
-                  ),
+                  label: Text(fabLabel),
                 )
               : null,
           body: Column(
@@ -258,7 +275,10 @@ class _FinanceCalcScreenState extends State<FinanceCalcScreen> {
               ),
               Expanded(
                 child: switch (vm.activeSection) {
-                  FinanceSection.ledger => _LedgerSection(viewModel: vm),
+                  FinanceSection.ledger => CommunityHubSection(
+                      viewModel: vm,
+                      generalLedgerView: _LedgerSection(viewModel: vm),
+                    ),
                   FinanceSection.loansRentals => _LoansSection(viewModel: vm),
                   FinanceSection.calculators =>
                     _CalculatorsSection(viewModel: vm),

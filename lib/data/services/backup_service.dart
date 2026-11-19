@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../../domain/models/daily_purchase_record.dart';
+import '../../domain/models/donation_su_mae_models.dart';
 import '../../domain/models/emergency_qr_card.dart';
 import '../../domain/models/ledger_entry.dart';
 import '../../domain/models/loan_rental_item.dart';
@@ -18,6 +19,8 @@ class BackupSnapshot {
     this.purchaseRecords = const [],
     required this.reminders,
     required this.qrCard,
+    this.donationCampaigns = const [],
+    this.suMaeGroups = const [],
   });
 
   final int version;
@@ -28,6 +31,8 @@ class BackupSnapshot {
   final List<DailyPurchaseRecord> purchaseRecords;
   final List<RenewalReminder> reminders;
   final EmergencyQrCard qrCard;
+  final List<DonationCampaign> donationCampaigns;
+  final List<SuMaeGroup> suMaeGroups;
 }
 
 /// Serializes and parses full offline JSON backups for user-owned storage.
@@ -45,6 +50,9 @@ class BackupService {
           snapshot.purchaseRecords.map((e) => e.toMap()).toList(),
       'reminders': snapshot.reminders.map((e) => e.toMap()).toList(),
       'qrCard': snapshot.qrCard.toJson(),
+      'donationCampaigns':
+          snapshot.donationCampaigns.map((e) => e.toMap()).toList(),
+      'suMaeGroups': snapshot.suMaeGroups.map((e) => e.toMap()).toList(),
     };
     return const JsonEncoder.withIndent('  ').convert(payload);
   }
@@ -82,6 +90,9 @@ class BackupService {
       purchaseRecords: parseList('purchaseRecords', DailyPurchaseRecord.fromMap),
       reminders: parseList('reminders', RenewalReminder.fromMap),
       qrCard: qrCard,
+      donationCampaigns:
+          parseList('donationCampaigns', DonationCampaign.fromMap),
+      suMaeGroups: parseList('suMaeGroups', SuMaeGroup.fromMap),
     );
   }
 }
