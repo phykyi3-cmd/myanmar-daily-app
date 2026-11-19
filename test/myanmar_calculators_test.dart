@@ -101,7 +101,11 @@ void main() {
               'usdP2pSellMmk': 5066,
               'usdP2pMidMmk': 5098,
               'usdRemitMmk': 3874,
-              'worldGoldUsdPerOz': 3732.3,
+              'worldGoldUsdPerOz': 3728.0,
+              'goldOpenMarket16PaeMmk': 10300000,
+              'goldOpenMarket15PaeMmk': 9655000,
+              'goldYgeaRef16PaeMmk': 7050000,
+              'goldYgeaRef15PaeMmk': 6610000,
               'globalRatesPerUsd': {
                 'USD': 1.0,
                 'THB': 33.96,
@@ -135,7 +139,7 @@ void main() {
           );
         }
         if (url.contains('api.gold-api.com')) {
-          return http.Response(jsonEncode({'price': 3732.3}), 200);
+          return http.Response(jsonEncode({'price': 3728.0}), 200);
         }
         return http.Response('not found', 404);
       });
@@ -167,6 +171,24 @@ void main() {
       final reset = await service.resetToLiveMarketRate();
       expect(reset.activeRateTier, MarketRateTier.cashMarket);
       expect(reset.usdMarketMmk, 4650);
+
+      // Real Yangon open-market 16-Pae gold tracks live XAU/USD * live P2P USD (+1.5% spread)
+      expect(liveCash.activeGoldTier, GoldRateTier.openMarket);
+      expect(liveCash.goldOpenMarket16PaeMmk, inInclusiveRange(10250000, 10350000));
+      expect(liveCash.myanmarGold16PaeMmk, liveCash.goldOpenMarket16PaeMmk);
+      expect(liveCash.goldYgeaRef16PaeMmk, 7050000);
+
+      final ygea = await service.setGoldRateTier(GoldRateTier.ygeaReference);
+      expect(ygea.activeGoldTier, GoldRateTier.ygeaReference);
+      expect(ygea.myanmarGold16PaeMmk, 7050000);
+
+      final customGold = await service.updateMyanmarGoldPrice(10500000);
+      expect(customGold.activeGoldTier, GoldRateTier.custom);
+      expect(customGold.myanmarGold16PaeMmk, 10500000);
+
+      final resetGold = await service.resetToLiveGoldPrice();
+      expect(resetGold.activeGoldTier, GoldRateTier.openMarket);
+      expect(resetGold.myanmarGold16PaeMmk, inInclusiveRange(10250000, 10350000));
     });
 
     test('falls back directly to native Bybit/Bitget P2P when live_fx.json is unavailable', () async {
@@ -251,6 +273,22 @@ void main() {
       await tester.enterText(amountField, '၁၀');
       await tester.pumpAndSettle();
       expect(find.textContaining('50,980 ကျပ်'), findsOneWidget);
+
+      // Verify Gold Calculator live open-market price & YGEA tier switching
+      final ygeaChip = find.textContaining('YGEA ရည်ညွှန်း (7,050,000 ကျပ်)');
+      await tester.scrollUntilVisible(
+        ygeaChip,
+        -350,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.ensureVisible(ygeaChip);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('ပြင်ပရွှေပေါက်ဈေး (10,300,000 ကျပ်)'), findsOneWidget);
+      expect(ygeaChip, findsOneWidget);
+
+      await tester.tap(ygeaChip);
+      await tester.pumpAndSettle();
+      expect(vm.marketSnapshot.myanmarGold16PaeMmk, 7050000);
     });
   });
 }

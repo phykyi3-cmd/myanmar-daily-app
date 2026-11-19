@@ -139,15 +139,29 @@ def fetch_global_fx() -> dict[str, float]:
         return defaults
 
 
-def fetch_world_gold_usd() -> float:
+def fetch_world_gold_usd() -> tuple[float, str]:
     try:
         res = http_json("https://api.gold-api.com/price/XAU")
         price = float(res["price"])
         if 1500 <= price <= 10000:
-            return round(price, 2)
+            return round(price, 2), "Gold-API (XAU/USD)"
     except Exception as exc:
         print(f"[warn] gold-api failed: {exc}", file=sys.stderr)
-    return 3730.0
+
+    # 24/7 tokenized 1 troy oz physical gold fallback (works on weekends too).
+    try:
+        res = http_json(
+            "https://api.bitget.com/api/v2/spot/market/tickers?symbol=PAXGUSDT"
+        )
+        data = res.get("data") or []
+        if data:
+            price = float(data[0]["lastPr"])
+            if 1500 <= price <= 10000:
+                return round(price, 2), "Bitget Spot (PAXG/USDT)"
+    except Exception as exc:
+        print(f"[warn] Bitget PAXG/USDT failed: {exc}", file=sys.stderr)
+
+    return 3728.0, "Fallback Gold"
 
 
 def main() -> int:
@@ -157,7 +171,7 @@ def main() -> int:
     bitget_buy, bitget_sell = fetch_bitget_p2p()
     remitly_mmk = fetch_remitly_mmk()
     global_rates = fetch_global_fx()
-    gold_usd = fetch_world_gold_usd()
+    gold_usd, gold_source = fetch_world_gold_usd()
 
     all_buys = bybit_buy + bitget_buy
     all_sells = bybit_sell + bitget_sell
@@ -169,7 +183,7 @@ def main() -> int:
         sources.append("Bitget P2P (USDT/MMK)")
     if remitly_mmk is not None:
         sources.append("Remitly (USD/MMK)")
-    sources.extend(["Open-ER-API", "Gold-API"])
+    sources.extend(["Open-ER-API", gold_source])
 
     p2p_buy = round(statistics.median(all_buys)) if all_buys else None
     p2p_sell = round(statistics.median(all_sells)) if all_sells else None
@@ -182,19 +196,29 @@ def main() -> int:
         p2p_mid = p2p_sell
     else:
         p2p_mid = 5100
-        p2p_buy = 5120
-        p2p_sell = 5080
+        p2p_buy = 5125
+        p2p_sell = 5070
 
     remit_rate = round(remitly_mmk) if remitly_mmk else round(p2p_mid * 0.76)
 
-    # Myanmar physical cash USD market typically trades ~8.5% below digital USDT P2P
-    # (and tracks live P2P + remittance liquidity in real time).
+    # Myanmar physical cash USD market typically trades ~8.8% below digital USDT P2P.
     cash_market_usd = round((p2p_mid * 0.912) / 5) * 5
+
+    # Real Yangon Open-Market Gold (16-Pae Akauk Shwe, 1 Kyat-thar = 16.606g = 1 / 1.873026 troy oz)
+    # priced off live open-market USD (P2P mid) + ~1.5% Yangon physical bullion dealer spread.
+    world_usd_per_kyatthar = round(gold_usd / 1.873026, 2)
+    gold_open_16pae = round(((world_usd_per_kyatthar * p2p_mid) * 1.015) / 5000) * 5000
+    gold_open_15pae = round(((gold_open_16pae * 15) / 16) / 5000) * 5000
+
+    # Official YGEA / CSO reference parity (16.3293g/kyatthar = 1 / 1.90476 troy oz, CBM online trade USD ~3,600)
+    ygea_usd_ref = round(remit_rate * 0.93)
+    gold_ygea_16pae = round(((gold_usd / 1.90476) * ygea_usd_ref) / 5000) * 5000
+    gold_ygea_15pae = round(((gold_ygea_16pae * 15) / 16) / 5000) * 5000
 
     now_utc = dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
     payload = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "updatedAtUtc": now_utc,
         "usdCashMarketMmk": cash_market_usd,
         "usdP2pBuyMmk": p2p_buy,
@@ -203,6 +227,11 @@ def main() -> int:
         "usdRemitMmk": remit_rate,
         "usdOfficialMmk": round(global_rates["MMK"]),
         "worldGoldUsdPerOz": gold_usd,
+        "goldWorldUsdPerKyatthar": world_usd_per_kyatthar,
+        "goldOpenMarket16PaeMmk": gold_open_16pae,
+        "goldOpenMarket15PaeMmk": gold_open_15pae,
+        "goldYgeaRef16PaeMmk": gold_ygea_16pae,
+        "goldYgeaRef15PaeMmk": gold_ygea_15pae,
         "globalRatesPerUsd": {
             "USD": 1.0,
             "THB": global_rates["THB"],

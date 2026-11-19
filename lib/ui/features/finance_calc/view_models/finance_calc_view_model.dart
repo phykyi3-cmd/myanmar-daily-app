@@ -49,6 +49,12 @@ class FinanceCalcViewModel extends ChangeNotifier {
   double _lastFxAmount = 100;
   bool _lastFxToMmk = true;
 
+  int _lastGoldKyat = 0;
+  int _lastGoldPae = 4;
+  double _lastGoldYway = 0;
+  double _lastGoldWastagePae = 1;
+  double _lastGoldMakingFeeMmk = 35000;
+
   List<LedgerEntry> _ledgerEntries = const [];
   List<LedgerEntry> get ledgerEntries => _ledgerEntries;
 
@@ -181,14 +187,38 @@ class FinanceCalcViewModel extends ChangeNotifier {
     }
   }
 
+  Future<void> setGoldRateTier(GoldRateTier tier) async {
+    _isSyncingOnline = true;
+    notifyListeners();
+    try {
+      _marketSnapshot = await _marketPriceService.setGoldRateTier(tier);
+      _recomputeDefaultsFromSnapshot();
+    } finally {
+      _isSyncingOnline = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> resetToLiveGoldPrice() async {
+    _isSyncingOnline = true;
+    notifyListeners();
+    try {
+      _marketSnapshot = await _marketPriceService.resetToLiveGoldPrice();
+      _recomputeDefaultsFromSnapshot();
+    } finally {
+      _isSyncingOnline = false;
+      notifyListeners();
+    }
+  }
+
   void _recomputeDefaultsFromSnapshot() {
     _goldResult = MyanmarCalculators.calculateGoldPrice(
-      kyat: 0,
-      pae: 4,
-      yway: 0,
+      kyat: _lastGoldKyat,
+      pae: _lastGoldPae,
+      yway: _lastGoldYway,
       pricePerKyat: activeGoldPricePerKyatMmk.toDouble(),
-      wastagePae: 1,
-      makingFeeMmk: 35000,
+      wastagePae: _lastGoldWastagePae,
+      makingFeeMmk: _lastGoldMakingFeeMmk,
     );
     final phonePrice =
         ((280 * _marketSnapshot.usdMarketMmk) / 10000).round() * 10000;
@@ -239,6 +269,11 @@ class FinanceCalcViewModel extends ChangeNotifier {
     double wastageYway = 0,
     double makingFeeMmk = 0,
   }) {
+    _lastGoldKyat = kyat;
+    _lastGoldPae = pae;
+    _lastGoldYway = yway;
+    _lastGoldWastagePae = wastagePae;
+    _lastGoldMakingFeeMmk = makingFeeMmk;
     _goldResult = MyanmarCalculators.calculateGoldPrice(
       kyat: kyat,
       pae: pae,

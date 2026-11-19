@@ -48,16 +48,38 @@ enum MarketRateTier {
   }
 }
 
+/// Active Myanmar Gold pricing tier selectable by the user.
+enum GoldRateTier {
+  openMarket(labelMm: 'ပြင်ပရွှေပေါက်ဈေး Live'),
+  ygeaReference(labelMm: 'YGEA ရည်ညွှန်းဈေး'),
+  custom(labelMm: 'မိမိရွှေဈေး');
+
+  const GoldRateTier({required this.labelMm});
+  final String labelMm;
+
+  static GoldRateTier fromName(String? value) {
+    return GoldRateTier.values.firstWhere(
+      (t) => t.name == value,
+      orElse: () => GoldRateTier.openMarket,
+    );
+  }
+}
+
 /// Snapshot of online-synced Myanmar currency, gold (XAU & 16/15 Pae Yae), and commodity unit prices.
 class MarketPriceSnapshot {
   const MarketPriceSnapshot({
     required this.usdMarketMmk,
     required this.thbMarketMmk,
-    this.worldGoldUsdPerOz = 3732.0,
-    this.myanmarGold16PaeMmk = 9255000,
-    this.myanmarGold15PaeMmk = 8675000,
+    this.worldGoldUsdPerOz = 3728.0,
+    this.myanmarGold16PaeMmk = 10300000,
+    this.myanmarGold15PaeMmk = 9655000,
+    this.goldOpenMarket16PaeMmk = 10300000,
+    this.goldOpenMarket15PaeMmk = 9655000,
+    this.goldYgeaRef16PaeMmk = 7050000,
+    this.goldYgeaRef15PaeMmk = 6610000,
+    this.activeGoldTier = GoldRateTier.openMarket,
     this.usdCashMarketMmk = 4650,
-    this.usdP2pBuyMmk = 5129,
+    this.usdP2pBuyMmk = 5130,
     this.usdP2pSellMmk = 5066,
     this.usdP2pMidMmk = 5098,
     this.usdRemitMmk = 3874,
@@ -85,6 +107,11 @@ class MarketPriceSnapshot {
   final double worldGoldUsdPerOz;
   final int myanmarGold16PaeMmk;
   final int myanmarGold15PaeMmk;
+  final int goldOpenMarket16PaeMmk;
+  final int goldOpenMarket15PaeMmk;
+  final int goldYgeaRef16PaeMmk;
+  final int goldYgeaRef15PaeMmk;
+  final GoldRateTier activeGoldTier;
   final int usdCashMarketMmk;
   final int usdP2pBuyMmk;
   final int usdP2pSellMmk;

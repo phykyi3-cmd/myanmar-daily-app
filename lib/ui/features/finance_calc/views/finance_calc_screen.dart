@@ -599,10 +599,16 @@ class _CalculatorsSectionState extends State<_CalculatorsSection> {
           ],
         ),
         actions: [
-          if (vm.marketSnapshot.activeRateTier == MarketRateTier.custom)
+          if (vm.marketSnapshot.activeRateTier == MarketRateTier.custom ||
+              vm.marketSnapshot.activeGoldTier == GoldRateTier.custom)
             TextButton(
               onPressed: () async {
-                await vm.resetToLiveMarketRate();
+                if (vm.marketSnapshot.activeRateTier == MarketRateTier.custom) {
+                  await vm.resetToLiveMarketRate();
+                }
+                if (vm.marketSnapshot.activeGoldTier == GoldRateTier.custom) {
+                  await vm.resetToLiveGoldPrice();
+                }
                 if (context.mounted) Navigator.of(context).pop();
               },
               child: const Text('Live ပြန်ချိတ်မည်'),
@@ -620,7 +626,10 @@ class _CalculatorsSectionState extends State<_CalculatorsSection> {
                   nextUsd > 500 &&
                   nextUsd != vm.marketSnapshot.usdMarketMmk) {
                 await vm.updateUsdMarketRate(nextUsd);
-              } else if (nextGold != null && nextGold > 100000) {
+              }
+              if (nextGold != null &&
+                  nextGold > 100000 &&
+                  nextGold != vm.marketSnapshot.myanmarGold16PaeMmk) {
                 await vm.updateMyanmarGold16PaePrice(nextGold);
               }
               if (context.mounted) Navigator.of(context).pop();
@@ -822,7 +831,7 @@ class _CalculatorsSectionState extends State<_CalculatorsSection> {
         ),
         const SizedBox(height: 12),
 
-        // 1. Live Online Gold Calculator
+        // 1. Live Online Active Myanmar Gold Calculator
         Card(
           color: const Color(0xFF16181C),
           shape: RoundedRectangleBorder(
@@ -835,7 +844,6 @@ class _CalculatorsSectionState extends State<_CalculatorsSection> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Expanded(
                       child: Text(
@@ -850,27 +858,138 @@ class _CalculatorsSectionState extends State<_CalculatorsSection> {
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 8,
-                        vertical: 4,
+                        vertical: 3,
                       ),
                       decoration: BoxDecoration(
-                        color: AppTheme.olive900,
+                        color: snap.isOnlineLive
+                            ? const Color(0xFF183016)
+                            : const Color(0xFF2B2410),
                         borderRadius: BorderRadius.circular(999),
-                        border: Border.all(color: AppTheme.olive800),
-                      ),
-                      child: Text(
-                        'XAU \$${snap.worldGoldUsdPerOz.toStringAsFixed(0)}/oz',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          color: AppTheme.neonLime500,
+                        border: Border.all(
+                          color: snap.isOnlineLive
+                              ? AppTheme.neonLime500
+                              : const Color(0xFFFACC15),
                         ),
                       ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 7,
+                            height: 7,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: snap.isOnlineLive
+                                  ? const Color(0xFF4ADE80)
+                                  : const Color(0xFFFACC15),
+                            ),
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            snap.isOnlineLive
+                                ? 'LIVE ${formatTimeShort((snap.feedUpdatedAtUtc ?? snap.lastSyncedAt).toLocal())}'
+                                : 'OFFLINE',
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w800,
+                              color: snap.isOnlineLive
+                                  ? const Color(0xFF4ADE80)
+                                  : const Color(0xFFFACC15),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      tooltip: 'ရွှေဈေး တိုက်ရိုက်ပြန်ဆွဲမည်',
+                      onPressed: vm.isSyncingOnline ? null : vm.syncOnlineRates,
+                      icon: vm.isSyncingOnline
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(
+                              Icons.sync_rounded,
+                              size: 20,
+                              color: AppTheme.neonLime500,
+                            ),
                     ),
                   ],
+                ),
+                const SizedBox(height: 6),
+                // Live Gold Market Tier Selector (Open Market vs YGEA Reference vs Custom)
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: ChoiceChip(
+                          visualDensity: VisualDensity.compact,
+                          label: Text(
+                            'ပြင်ပရွှေပေါက်ဈေး (${formatMmk(snap.goldOpenMarket16PaeMmk)})',
+                            style: const TextStyle(fontSize: 11.5),
+                          ),
+                          selected:
+                              snap.activeGoldTier == GoldRateTier.openMarket,
+                          onSelected: (_) =>
+                              vm.setGoldRateTier(GoldRateTier.openMarket),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: ChoiceChip(
+                          visualDensity: VisualDensity.compact,
+                          label: Text(
+                            'YGEA ရည်ညွှန်း (${formatMmk(snap.goldYgeaRef16PaeMmk)})',
+                            style: const TextStyle(fontSize: 11.5),
+                          ),
+                          selected:
+                              snap.activeGoldTier == GoldRateTier.ygeaReference,
+                          onSelected: (_) =>
+                              vm.setGoldRateTier(GoldRateTier.ygeaReference),
+                        ),
+                      ),
+                      ActionChip(
+                        visualDensity: VisualDensity.compact,
+                        avatar: const Icon(Icons.tune_rounded, size: 15),
+                        label: Text(
+                          snap.activeGoldTier == GoldRateTier.custom
+                              ? 'မိမိရွှေဈေး (${formatMmk(snap.myanmarGold16PaeMmk)})'
+                              : 'ရွှေဈေးပြင်ရန်',
+                          style: const TextStyle(fontSize: 11.5),
+                        ),
+                        onPressed: () => _showEditMarketRatesDialog(vm),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1F1B0E),
+                    borderRadius: BorderRadius.circular(11),
+                    border: Border.all(
+                      color: const Color(0xFFFACC15).withValues(alpha: 0.4),
+                    ),
+                  ),
+                  child: Text(
+                    'ကမ္ဘာ့ရွှေ XAU \$${snap.worldGoldUsdPerOz.toStringAsFixed(1)}/oz × ပြင်ပဒေါ်လာ ${formatMmk(snap.usdP2pMidMmk)} (၁ ကျပ်သား = 16.606g) • ${snap.activeGoldTier.labelMm}',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      height: 1.35,
+                      color: Color(0xFFFDE68A),
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 8,
+                  runSpacing: 6,
                   children: [
                     ChoiceChip(
                       label: Text(
@@ -902,17 +1021,59 @@ class _CalculatorsSectionState extends State<_CalculatorsSection> {
                 TextField(
                   controller: _goldPriceCtrl,
                   keyboardType: TextInputType.number,
+                  onChanged: (_) => _triggerGoldCalculation(vm),
                   decoration: const InputDecoration(
-                    labelText: '၁ ကျပ်သား ပေါက်ဈေး (ကျပ်) — Online Auto-Sync',
+                    labelText: '၁ ကျပ်သား ပေါက်ဈေး (ကျပ်) — Live Auto-Sync',
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
+                // Quick Traditional Myanmar Gold Weight Presets
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      for (final preset in const [
+                        ('၁ မူးသား (၂ ပဲ)', 0, 2),
+                        ('၁ မတ်သား (၄ ပဲ)', 0, 4),
+                        ('၅ မူးသား (၈ ပဲ)', 0, 8),
+                        ('၁ ကျပ်သား', 1, 0),
+                      ])
+                        Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: ActionChip(
+                            visualDensity: VisualDensity.compact,
+                            backgroundColor: const Color(0xFF231F10),
+                            side: BorderSide(
+                              color: const Color(0xFFFACC15)
+                                  .withValues(alpha: 0.45),
+                            ),
+                            label: Text(
+                              preset.$1,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFFFACC15),
+                              ),
+                            ),
+                            onPressed: () {
+                              _kyatCtrl.text = preset.$2.toString();
+                              _paeCtrl.text = preset.$3.toString();
+                              _ywayCtrl.text = '0';
+                              _triggerGoldCalculation(vm);
+                            },
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
                 Row(
                   children: [
                     Expanded(
                       child: TextField(
                         controller: _kyatCtrl,
                         keyboardType: TextInputType.number,
+                        onChanged: (_) => _triggerGoldCalculation(vm),
                         decoration: const InputDecoration(labelText: 'ကျပ်'),
                       ),
                     ),
@@ -921,6 +1082,7 @@ class _CalculatorsSectionState extends State<_CalculatorsSection> {
                       child: TextField(
                         controller: _paeCtrl,
                         keyboardType: TextInputType.number,
+                        onChanged: (_) => _triggerGoldCalculation(vm),
                         decoration: const InputDecoration(labelText: 'ပဲ'),
                       ),
                     ),
@@ -931,6 +1093,7 @@ class _CalculatorsSectionState extends State<_CalculatorsSection> {
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
+                        onChanged: (_) => _triggerGoldCalculation(vm),
                         decoration: const InputDecoration(labelText: 'ရွေး'),
                       ),
                     ),
@@ -945,6 +1108,7 @@ class _CalculatorsSectionState extends State<_CalculatorsSection> {
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
+                        onChanged: (_) => _triggerGoldCalculation(vm),
                         decoration: const InputDecoration(
                           labelText: 'အလျော့တွက် (ပဲ)',
                         ),
@@ -955,6 +1119,7 @@ class _CalculatorsSectionState extends State<_CalculatorsSection> {
                       child: TextField(
                         controller: _makingFeeCtrl,
                         keyboardType: TextInputType.number,
+                        onChanged: (_) => _triggerGoldCalculation(vm),
                         decoration: const InputDecoration(
                           labelText: 'လက်ခ (ကျပ်)',
                         ),

@@ -22,6 +22,8 @@ class MarketPriceService {
   static const String _liveExchangeApiUrl =
       'https://open.er-api.com/v6/latest/USD';
   static const String _liveGoldApiUrl = 'https://api.gold-api.com/price/XAU';
+  static const String _bitgetPaxgUrl =
+      'https://api.bitget.com/api/v2/spot/market/tickers?symbol=PAXGUSDT';
   static const String _bybitP2pUrl =
       'https://api2.bybit.com/fiat/otc/item/online';
   static const String _bitgetP2pUrl =
@@ -31,6 +33,11 @@ class MarketPriceService {
   static const String _customUsdKey = 'user_usd_market_mmk';
   static const String _customGoldKey = 'user_gold_16pae_mmk';
   static const String _rateTierKey = 'market_rate_tier_v1';
+  static const String _goldTierKey = 'gold_rate_tier_v1';
+
+  static const double _kyattharPerTroyOzTraditional = 1.873026; // 31.1034768 / 16.606g
+  static const double _kyattharPerTroyOzYgea = 1.90476; // 31.1034768 / 16.3293g
+  static const double _yangonPhysicalBullionSpread = 1.015;
 
   static const int _baselineMarketUsdMmk = 4650;
   static const int _baselineP2pBuyMmk = 5125;
@@ -53,6 +60,7 @@ class MarketPriceService {
   Future<MarketPriceSnapshot> _syncInternal({
     int? customUsdMarketMmk,
     MarketRateTier? overrideTier,
+    GoldRateTier? overrideGoldTier,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final overrides = _loadUserOverrides(prefs);
@@ -62,6 +70,12 @@ class MarketPriceService {
         (savedCustomUsd != null
             ? MarketRateTier.custom
             : MarketRateTier.fromName(prefs.getString(_rateTierKey)));
+
+    final savedCustomGold = prefs.getInt(_customGoldKey);
+    final savedGoldTier = overrideGoldTier ??
+        (savedCustomGold != null
+            ? GoldRateTier.custom
+            : GoldRateTier.fromName(prefs.getString(_goldTierKey)));
 
     // 1. Fetch live Myanmar FX feed, global FX cross-rates, and World Spot Gold in parallel.
     final results = await Future.wait<dynamic>([
@@ -137,13 +151,42 @@ class MarketPriceService {
 
     final effectiveThbMmk = (effectiveUsdMmk / thbPerUsd).round();
 
-    final worldGoldUsd = liveGoldUsd ?? feed?.worldGoldUsdPerOz ?? 3732.0;
-    // Myanmar 16-Pae-Yae (အခေါက်ရွှေ ၁ ကျပ်သား) = (World Gold USD/oz / 1.875) * active USD rate
-    final computedGold16Pae =
-        (((worldGoldUsd / 1.875) * effectiveUsdMmk) / 5000).round() * 5000;
-    final effectiveGold16Pae =
-        prefs.getInt(_customGoldKey) ?? computedGold16Pae;
-    final effectiveGold15Pae =
+    final worldGoldUsd = liveGoldUsd ?? feed?.worldGoldUsdPerOz ?? 3728.0;
+
+    // 1) Yangon Real Open-Market 16-Pae Akauk Shwe (16.606g/kyat-thar) priced off live
+    //    open-market USD (P2P Mid) + ~1.5% Yangon physical bullion spread.
+    //    Recomputes dynamically whenever EITHER XAU/USD OR P2P USD moves live!
+    final int openGold16Pae = liveGoldUsd != null || directP2p != null || feed?.goldOpenMarket16PaeMmk == null
+        ? ((((worldGoldUsd / _kyattharPerTroyOzTraditional) * p2pMid) *
+                    _yangonPhysicalBullionSpread) /
+                5000)
+            .round() *
+            5000
+        : feed!.goldOpenMarket16PaeMmk!;
+    final int openGold15Pae =
+        (((openGold16Pae * 15) / 16) / 5000).round() * 5000;
+
+    // 2) Official YGEA / CSO reference parity (16.3293g/kyat-thar, CBM trade USD ref).
+    final int ygeaGold16Pae = feed?.goldYgeaRef16PaeMmk ??
+        ((((worldGoldUsd / _kyattharPerTroyOzYgea) * (remitUsd * 0.93)) / 5000)
+                .round() *
+            5000);
+    final int ygeaGold15Pae =
+        (((ygeaGold16Pae * 15) / 16) / 5000).round() * 5000;
+
+    final GoldRateTier effectiveGoldTier =
+        (savedGoldTier == GoldRateTier.custom && savedCustomGold != null)
+            ? GoldRateTier.custom
+            : (savedGoldTier == GoldRateTier.custom
+                ? GoldRateTier.openMarket
+                : savedGoldTier);
+
+    final int effectiveGold16Pae = switch (effectiveGoldTier) {
+      GoldRateTier.openMarket => openGold16Pae,
+      GoldRateTier.ygeaReference => ygeaGold16Pae,
+      GoldRateTier.custom => savedCustomGold ?? openGold16Pae,
+    };
+    final int effectiveGold15Pae =
         (((effectiveGold16Pae * 15) / 16) / 5000).round() * 5000;
 
     // Exact 1-unit MMK rates ordered for Myanmar & diaspora users.
@@ -203,6 +246,11 @@ class MarketPriceService {
       worldGoldUsdPerOz: double.parse(worldGoldUsd.toStringAsFixed(1)),
       myanmarGold16PaeMmk: effectiveGold16Pae,
       myanmarGold15PaeMmk: effectiveGold15Pae,
+      goldOpenMarket16PaeMmk: openGold16Pae,
+      goldOpenMarket15PaeMmk: openGold15Pae,
+      goldYgeaRef16PaeMmk: ygeaGold16Pae,
+      goldYgeaRef15PaeMmk: ygeaGold15Pae,
+      activeGoldTier: effectiveGoldTier,
       usdCashMarketMmk: cashMarketUsd,
       usdP2pBuyMmk: p2pBuy,
       usdP2pSellMmk: p2pSell,
@@ -227,7 +275,6 @@ class MarketPriceService {
     await prefs.setString(_rateTierKey, tier.name);
     if (tier != MarketRateTier.custom) {
       await prefs.remove(_customUsdKey);
-      await prefs.remove(_customGoldKey);
     }
     return _syncInternal(overrideTier: tier);
   }
@@ -237,13 +284,27 @@ class MarketPriceService {
     return setMarketRateTier(MarketRateTier.cashMarket);
   }
 
+  /// Switches between Live Yangon Open-Market Gold and Official YGEA Reference Gold.
+  Future<MarketPriceSnapshot> setGoldRateTier(GoldRateTier tier) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_goldTierKey, tier.name);
+    if (tier != GoldRateTier.custom) {
+      await prefs.remove(_customGoldKey);
+    }
+    return _syncInternal(overrideGoldTier: tier);
+  }
+
+  /// Resets custom gold override back to real-time Yangon open-market live gold sync.
+  Future<MarketPriceSnapshot> resetToLiveGoldPrice() async {
+    return setGoldRateTier(GoldRateTier.openMarket);
+  }
+
   /// Updates the Myanmar market USD/MMK rate manually, scaling all currencies, commodities, and gold.
   Future<MarketPriceSnapshot> updateUsdMarketRate(int newUsdMmk) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_customUsdKey, newUsdMmk);
     await prefs.setString(_rateTierKey, MarketRateTier.custom.name);
     await prefs.remove(_customOverridesKey);
-    await prefs.remove(_customGoldKey);
     return _syncInternal(
       customUsdMarketMmk: newUsdMmk,
       overrideTier: MarketRateTier.custom,
@@ -254,7 +315,8 @@ class MarketPriceService {
   Future<MarketPriceSnapshot> updateMyanmarGoldPrice(int newGold16PaeMmk) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_customGoldKey, newGold16PaeMmk);
-    return syncLiveMarketPrices();
+    await prefs.setString(_goldTierKey, GoldRateTier.custom.name);
+    return _syncInternal(overrideGoldTier: GoldRateTier.custom);
   }
 
   /// Overrides a single commodity's 1-unit (e.g. ၁ ပိဿာ) market price.
@@ -280,6 +342,11 @@ class MarketPriceService {
       worldGoldUsdPerOz: current.worldGoldUsdPerOz,
       myanmarGold16PaeMmk: current.myanmarGold16PaeMmk,
       myanmarGold15PaeMmk: current.myanmarGold15PaeMmk,
+      goldOpenMarket16PaeMmk: current.goldOpenMarket16PaeMmk,
+      goldOpenMarket15PaeMmk: current.goldOpenMarket15PaeMmk,
+      goldYgeaRef16PaeMmk: current.goldYgeaRef16PaeMmk,
+      goldYgeaRef15PaeMmk: current.goldYgeaRef15PaeMmk,
+      activeGoldTier: current.activeGoldTier,
       usdCashMarketMmk: current.usdCashMarketMmk,
       usdP2pBuyMmk: current.usdP2pBuyMmk,
       usdP2pSellMmk: current.usdP2pSellMmk,
@@ -335,6 +402,9 @@ class MarketPriceService {
         usdP2pMidMmk: mid ?? ((buy ?? _baselineP2pBuyMmk) + (sell ?? _baselineP2pSellMmk)) ~/ 2,
         usdRemitMmk: remit ?? _baselineRemitMmk,
         worldGoldUsdPerOz: (decoded['worldGoldUsdPerOz'] as num?)?.toDouble(),
+        goldOpenMarket16PaeMmk:
+            (decoded['goldOpenMarket16PaeMmk'] as num?)?.round(),
+        goldYgeaRef16PaeMmk: (decoded['goldYgeaRef16PaeMmk'] as num?)?.round(),
         globalRatesPerUsd: globalMap,
         updatedAtUtc:
             DateTime.tryParse((decoded['updatedAtUtc'] as String?) ?? ''),
@@ -378,14 +448,30 @@ class MarketPriceService {
       final resp = await _httpClient
           .get(Uri.parse(_liveGoldApiUrl))
           .timeout(const Duration(seconds: 6));
-      if (resp.statusCode != 200) return null;
-      final decoded = jsonDecode(resp.body) as Map<String, dynamic>;
-      final price = (decoded['price'] as num?)?.toDouble();
-      if (price != null && price > 1500 && price < 10000) return price;
-      return null;
-    } catch (_) {
-      return null;
+      if (resp.statusCode == 200) {
+        final decoded = jsonDecode(resp.body) as Map<String, dynamic>;
+        final price = (decoded['price'] as num?)?.toDouble();
+        if (price != null && price > 1500 && price < 10000) return price;
+      }
+    } catch (_) {}
+
+    // 24/7 Bitget PAXG/USDT spot fallback on native platforms (trades even on weekends).
+    if (!kIsWeb) {
+      try {
+        final resp = await _httpClient
+            .get(Uri.parse(_bitgetPaxgUrl))
+            .timeout(const Duration(seconds: 6));
+        if (resp.statusCode == 200) {
+          final decoded = jsonDecode(resp.body) as Map<String, dynamic>;
+          final list = decoded['data'];
+          if (list is List && list.isNotEmpty && list.first is Map) {
+            final price = double.tryParse('${(list.first as Map)['lastPr']}');
+            if (price != null && price > 1500 && price < 10000) return price;
+          }
+        }
+      } catch (_) {}
     }
+    return null;
   }
 
   Future<_LiveP2pQuote?> _fetchDirectNativeP2pQuote() async {
@@ -514,6 +600,8 @@ class _MyanmarFxFeed {
     required this.usdP2pMidMmk,
     required this.usdRemitMmk,
     required this.worldGoldUsdPerOz,
+    this.goldOpenMarket16PaeMmk,
+    this.goldYgeaRef16PaeMmk,
     required this.globalRatesPerUsd,
     required this.updatedAtUtc,
     required this.sources,
@@ -525,6 +613,8 @@ class _MyanmarFxFeed {
   final int usdP2pMidMmk;
   final int usdRemitMmk;
   final double? worldGoldUsdPerOz;
+  final int? goldOpenMarket16PaeMmk;
+  final int? goldYgeaRef16PaeMmk;
   final Map<String, double> globalRatesPerUsd;
   final DateTime? updatedAtUtc;
   final List<String> sources;
