@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 2,
+  "updatedAtUtc": "2026-11-28T13:26:39Z",
+  "usdCashMarketMmk": 4750,
+  "usdP2pBuyMmk": 5269,
+  "usdP2pSellMmk": 5152,
+  "usdP2pMidMmk": 5210,
+  "usdRemitMmk": 3873,
+  "usdOfficialMmk": 2099,
+  "worldGoldUsdPerOz": 3650.0,
+  "goldWorldUsdPerKyatthar": 1948.72,
+  "goldOpenMarket16PaeMmk": 10305000,
+  "goldOpenMarket15PaeMmk": 9660000,
+  "goldYgeaRef16PaeMmk": 6900000,
+  "goldYgeaRef15PaeMmk": 6470000,
+  "globalRatesPerUsd": {
+    "USD": 1.0,
+    "THB": 33.951373,
+    "MYR": 4.121319,
+    "SGD": 1.290402,
+    "KRW": 1335.09144,
+    "JPY": 159.521535,
+    "CNY": 6.670928,
+    "EUR": 0.913612
+  },
+  "sources": [
+    "Bybit P2P (USDT/MMK)",
+    "Bitget P2P (USDT/MMK)",
+    "Remitly (USD/MMK)",
+    "Open-ER-API",
+    "Gold-API (XAU/USD)"
+  ]
+}
